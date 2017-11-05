@@ -1,6 +1,6 @@
 # Generic and Fast Binary Serializer for Go
 
-This repository contains a fast binary packer for Golang, this allows to encode/decode arbtitrary golang data structures of variable size. 
+This repository contains a fast binary packer for Golang, this allows to encode/decode arbtitrary golang data structures of variable size. [Documentation](https://godoc.org/github.com/Kelindar/binary) can be found on [https://godoc.org/github.com/Kelindar/binary](https://godoc.org/github.com/Kelindar/binary).
 
 This package extends support to arbitrary, variable-sized values by prefixing these values with their varint-encoded size, recursively. This was originally inspired by Alec Thomas's binary package, but I've reworked the serialization format and improved the performance and size. Here's a few notable features/goals of this `binary` package:
  * Zero-allocation encoding. I'm hoping to make the encoding to be as fast as possible, simply writing binary to the `io.Writer` without unncessary allocations.

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"errors"
 	"reflect"
+	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // Message represents a message to be flushed
@@ -16,40 +16,6 @@ type msg struct {
 	Timestamp int64
 	Payload   []byte
 	Ssid      []uint32
-}
-
-func BenchmarkEncodeOne(b *testing.B) {
-	codec := NewEncoder(new(bytes.Buffer))
-	v := &msg{
-		Name:      "Roman",
-		Timestamp: 1242345235,
-		Payload:   []byte("hi"),
-		Ssid:      []uint32{1, 2, 3},
-	}
-
-	codec.Encode(v)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		codec.Encode(v)
-	}
-}
-
-func BenchmarkDecodeOne(b *testing.B) {
-	rdr := bytes.NewReader([]byte{0x5, 0x52, 0x6f, 0x6d, 0x61, 0x6e, 0xa6, 0xbc, 0xe5, 0xa0, 0x9, 0x2, 0x68, 0x69, 0x3, 0x1, 0x2, 0x3})
-	codec := NewDecoder(rdr)
-
-	o := &msg{}
-
-	codec.Decode(o)
-	rdr.Seek(0, 0)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		codec.Decode(o)
-		rdr.Seek(0, 0)
-	}
 }
 
 type s0 struct {
@@ -62,29 +28,6 @@ var (
 	s0v = &s0{"A", "B", 1}
 	s0b = []byte{0x1, 0x41, 0x1, 0x42, 0x2}
 )
-
-func TestBinaryEncodeStruct(t *testing.T) {
-	b, err := Marshal(s0v)
-	assert.NoError(t, err)
-	assert.Equal(t, s0b, b)
-}
-
-func TestBinaryDecodeStruct(t *testing.T) {
-	s := &s0{}
-	err := Unmarshal(s0b, s)
-	assert.NoError(t, err)
-	assert.Equal(t, s0v, s)
-}
-
-func TestBinaryDecodeToValueErrors(t *testing.T) {
-	b := []byte{1, 0, 0, 0}
-	var v uint32
-	err := Unmarshal(b, v)
-	assert.Error(t, err)
-	err = Unmarshal(b, &v)
-	assert.NoError(t, err)
-	assert.Equal(t, uint32(1), v)
-}
 
 func TestBinaryTime(t *testing.T) {
 	input := []time.Time{
