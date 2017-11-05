@@ -90,7 +90,7 @@ func (d *Decoder) decodeValue(rv reflect.Value) (err error) {
 		}
 
 	case reflect.Struct:
-		meta := getMetadata(rv)
+		meta := getMetadata(rv.Type())
 
 		// Call the unmarshaler
 		if m := meta.GetUnmarshalBinary(rv); m != nil {

@@ -18,8 +18,8 @@ var (
 // Marshal encodes the payload into binary format.
 func Marshal(v interface{}) ([]byte, error) {
 	b := &bytes.Buffer{}
-	encoder := GetEncoder(b)
-	defer encoder.Release()
+	encoder := borrowEncoder(b)
+	defer encoder.release()
 
 	if err := encoder.Encode(v); err != nil {
 		return nil, err
@@ -40,6 +40,10 @@ type typeMeta struct {
 	unmarshaler    *reflect.Method
 	ptrMarshaler   *reflect.Method
 	ptrUnmarshaler *reflect.Method
+}
+
+func (m *typeMeta) IsCustom() bool {
+	return (m.marshaler != nil || m.ptrMarshaler != nil) && (m.unmarshaler != nil || m.ptrUnmarshaler != nil)
 }
 
 func (m *typeMeta) GetMarshalBinary(rv reflect.Value) *reflect.Value {
@@ -70,14 +74,13 @@ func (m *typeMeta) GetUnmarshalBinary(rv reflect.Value) *reflect.Value {
 	return nil
 }
 
-func getMetadata(rv reflect.Value) (meta *typeMeta) {
-	t := rv.Type()
+func getMetadata(t reflect.Type) (meta *typeMeta) {
 	if f, ok := types.Load(t); ok {
 		meta = f.(*typeMeta)
 		return
 	}
 
-	l := rv.NumField()
+	l := t.NumField()
 	meta = new(typeMeta)
 	for i := 0; i < l; i++ {
 		if t.Field(i).Name != "_" {

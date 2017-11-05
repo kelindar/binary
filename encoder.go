@@ -2,7 +2,6 @@ package binary
 
 import (
 	"encoding/binary"
-	"errors"
 	"io"
 	"reflect"
 	"sync"
@@ -29,7 +28,7 @@ func NewEncoder(out io.Writer) *Encoder {
 }
 
 // GetEncoder borrows a pooled encoder.
-func GetEncoder(out io.Writer) *Encoder {
+func borrowEncoder(out io.Writer) *Encoder {
 	s := encoders.Get().(*Encoder)
 	s.Reset(out)
 	return s
@@ -37,162 +36,18 @@ func GetEncoder(out io.Writer) *Encoder {
 
 // Encode encodes the value to the binary format.
 func (e *Encoder) Encode(v interface{}) (err error) {
-	if err = e.encodeValue(reflect.Indirect(reflect.ValueOf(v))); err == nil {
+
+	// Scan the type (this will load from cache)
+	rv := reflect.Indirect(reflect.ValueOf(v))
+	var c codec
+	if c, err = scan(rv.Type()); err != nil {
+		return
+	}
+
+	// Encode and flush the encoder
+	if err = c.EncodeTo(e, rv); err == nil {
 		return e.Flush()
 	}
-	return
-}
-
-func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
-	switch rv.Kind() {
-	case reflect.Array:
-		l := rv.Type().Len()
-		for i := 0; i < l; i++ {
-			v := reflect.Indirect(rv.Index(i).Addr())
-			if err = e.encodeValue(v); err != nil {
-				return
-			}
-		}
-
-	case reflect.Slice:
-
-		// Write the slice header
-		l := rv.Len()
-		e.writeUint64(uint64(l))
-
-		// Fast-paths for simple numeric slices and string slices
-		switch rv.Type().Elem().Kind() {
-		case reflect.Int8:
-			fallthrough
-		case reflect.Uint8:
-			_, err = e.Write(rv.Bytes())
-			return
-
-		case reflect.Uint:
-			fallthrough
-		case reflect.Uint16:
-			fallthrough
-		case reflect.Uint32:
-			fallthrough
-		case reflect.Uint64:
-			for i := 0; i < l; i++ {
-				e.writeUint64(rv.Index(i).Uint())
-			}
-			return
-
-		case reflect.Int:
-			fallthrough
-		case reflect.Int16:
-			fallthrough
-		case reflect.Int32:
-			fallthrough
-		case reflect.Int64:
-			for i := 0; i < l; i++ {
-				e.writeInt64(rv.Index(i).Int())
-			}
-			return
-
-		default:
-			for i := 0; i < l; i++ {
-				v := reflect.Indirect(rv.Index(i).Addr())
-				if err = e.encodeValue(v); err != nil {
-					return
-				}
-			}
-		}
-
-	case reflect.Ptr:
-		hasValue := !rv.IsNil()
-		e.writeBool(hasValue)
-
-		if hasValue {
-			v := reflect.Indirect(rv)
-			if err = e.encodeValue(v); err != nil {
-				return
-			}
-		}
-
-	case reflect.Struct:
-		meta := getMetadata(rv)
-
-		// Call the marshaler
-		if m := meta.GetMarshalBinary(rv); m != nil {
-			ret := m.Call([]reflect.Value{})
-			if !ret[1].IsNil() {
-				err = ret[1].Interface().(error)
-				return
-			}
-
-			// Write the marshaled byte slice
-			buffer := ret[0].Bytes()
-			e.writeUint64(uint64(len(buffer)))
-			_, err = e.Write(buffer)
-			return
-		}
-
-		for _, i := range meta.fields {
-			if err = e.encodeValue(rv.Field(i)); err != nil {
-				return
-			}
-		}
-
-	case reflect.Map:
-		e.writeUint64(uint64(rv.Len()))
-
-		for _, key := range rv.MapKeys() {
-			value := rv.MapIndex(key)
-			if err = e.encodeValue(key); err != nil {
-				return err
-			}
-			if err = e.encodeValue(value); err != nil {
-				return err
-			}
-		}
-
-	case reflect.String:
-		e.writeString(rv.String())
-
-	case reflect.Bool:
-		e.writeBool(rv.Bool())
-
-	case reflect.Int8:
-		fallthrough
-	case reflect.Int16:
-		fallthrough
-	case reflect.Int32:
-		fallthrough
-	case reflect.Int:
-		fallthrough
-	case reflect.Int64:
-		e.writeInt64(rv.Int())
-
-	case reflect.Uint8:
-		fallthrough
-	case reflect.Uint16:
-		fallthrough
-	case reflect.Uint32:
-		fallthrough
-	case reflect.Uint:
-		fallthrough
-	case reflect.Uint64:
-		e.writeUint64(rv.Uint())
-
-	case reflect.Complex64:
-		err = binary.Write(e, e.Order, complex64(rv.Complex()))
-
-	case reflect.Complex128:
-		err = binary.Write(e, e.Order, rv.Complex())
-
-	case reflect.Float32:
-		err = binary.Write(e, e.Order, float32(rv.Float()))
-
-	case reflect.Float64:
-		err = binary.Write(e, e.Order, rv.Float())
-
-	default:
-		return errors.New("binary: unsupported type " + rv.Type().String())
-	}
-
 	return
 }
 
@@ -209,7 +64,7 @@ var encoders = &sync.Pool{New: func() interface{} {
 }}
 
 // Release releases the stream to the pool
-func (e *Encoder) Release() {
+func (e *Encoder) release() {
 	encoders.Put(e)
 }
 
