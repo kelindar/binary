@@ -55,29 +55,55 @@ func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
 		}
 
 	case reflect.Slice:
-		l := rv.Len()
-		if err = e.writeUint64(uint64(l)); err != nil {
-			return
-		}
 
-		// Fast-path for []byte
-		if rv.Type().Elem().Kind() == reflect.Uint8 {
+		// Write the slice header
+		l := rv.Len()
+		e.writeUint64(uint64(l))
+
+		// Fast-paths for simple numeric slices and string slices
+		switch rv.Type().Elem().Kind() {
+		case reflect.Int8:
+			fallthrough
+		case reflect.Uint8:
 			_, err = e.Write(rv.Bytes())
 			return
-		}
 
-		for i := 0; i < l; i++ {
-			v := reflect.Indirect(rv.Index(i).Addr())
-			if err = e.encodeValue(v); err != nil {
-				return
+		case reflect.Uint:
+			fallthrough
+		case reflect.Uint16:
+			fallthrough
+		case reflect.Uint32:
+			fallthrough
+		case reflect.Uint64:
+			for i := 0; i < l; i++ {
+				e.writeUint64(rv.Index(i).Uint())
+			}
+			return
+
+		case reflect.Int:
+			fallthrough
+		case reflect.Int16:
+			fallthrough
+		case reflect.Int32:
+			fallthrough
+		case reflect.Int64:
+			for i := 0; i < l; i++ {
+				e.writeInt64(rv.Index(i).Int())
+			}
+			return
+
+		default:
+			for i := 0; i < l; i++ {
+				v := reflect.Indirect(rv.Index(i).Addr())
+				if err = e.encodeValue(v); err != nil {
+					return
+				}
 			}
 		}
 
 	case reflect.Ptr:
 		hasValue := !rv.IsNil()
-		if err = e.writeBool(hasValue); err != nil {
-			return
-		}
+		e.writeBool(hasValue)
 
 		if hasValue {
 			v := reflect.Indirect(rv)
@@ -99,9 +125,8 @@ func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
 
 			// Write the marshaled byte slice
 			buffer := ret[0].Bytes()
-			if err = e.writeUint64(uint64(len(buffer))); err == nil {
-				_, err = e.Write(buffer)
-			}
+			e.writeUint64(uint64(len(buffer)))
+			_, err = e.Write(buffer)
 			return
 		}
 
@@ -112,10 +137,8 @@ func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
 		}
 
 	case reflect.Map:
-		l := rv.Len()
-		if err = e.writeUint64(uint64(l)); err != nil {
-			return
-		}
+		e.writeUint64(uint64(rv.Len()))
+
 		for _, key := range rv.MapKeys() {
 			value := rv.MapIndex(key)
 			if err = e.encodeValue(key); err != nil {
@@ -141,7 +164,7 @@ func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
 	case reflect.Int:
 		fallthrough
 	case reflect.Int64:
-		err = e.writeInt64(rv.Int())
+		e.writeInt64(rv.Int())
 
 	case reflect.Uint8:
 		fallthrough
@@ -152,7 +175,7 @@ func (e *Encoder) encodeValue(rv reflect.Value) (err error) {
 	case reflect.Uint:
 		fallthrough
 	case reflect.Uint64:
-		err = e.writeUint64(rv.Uint())
+		e.writeUint64(rv.Uint())
 
 	case reflect.Complex64:
 		err = binary.Write(e, e.Order, complex64(rv.Complex()))
@@ -281,33 +304,33 @@ func (e *Encoder) writeThreeBytes(c1 byte, c2 byte, c3 byte) {
 	e.n += 3
 }
 
-func (e *Encoder) writeInt64(v int64) error {
+func (e *Encoder) writeInt64(v int64) {
 	if e.Error != nil {
-		return e.Error
+		return
 	}
 	if e.Available() < 10 {
 		e.growAtLeast(10)
 	}
 
 	e.n += binary.PutVarint(e.buf[e.n:], v)
-	return nil
+	return
 }
 
-func (e *Encoder) writeUint64(v uint64) error {
+func (e *Encoder) writeUint64(v uint64) {
 	if e.Error != nil {
-		return e.Error
+		return
 	}
 	if e.Available() < 10 {
 		e.growAtLeast(10)
 	}
 
 	e.n += binary.PutUvarint(e.buf[e.n:], v)
-	return nil
+	return
 }
 
-func (e *Encoder) writeBool(v bool) error {
+func (e *Encoder) writeBool(v bool) {
 	if e.Error != nil {
-		return e.Error
+		return
 	}
 	if e.Available() < 1 {
 		e.growAtLeast(1)
@@ -319,7 +342,7 @@ func (e *Encoder) writeBool(v bool) error {
 	}
 	e.buf[e.n] = b
 	e.n++
-	return nil
+	return
 }
 
 func (e *Encoder) writeString(v string) {
