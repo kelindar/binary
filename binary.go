@@ -18,7 +18,10 @@ var (
 // Marshal encodes the payload into binary format.
 func Marshal(v interface{}) ([]byte, error) {
 	b := &bytes.Buffer{}
-	if err := NewEncoder(b).Encode(v); err != nil {
+	encoder := GetEncoder(b)
+	defer encoder.Release()
+
+	if err := encoder.Encode(v); err != nil {
 		return nil, err
 	}
 	return b.Bytes(), nil
@@ -67,7 +70,8 @@ func (m *typeMeta) GetUnmarshalBinary(rv reflect.Value) *reflect.Value {
 	return nil
 }
 
-func getMetadata(t reflect.Type, rv reflect.Value) (meta *typeMeta) {
+func getMetadata(rv reflect.Value) (meta *typeMeta) {
+	t := rv.Type()
 	if f, ok := types.Load(t); ok {
 		meta = f.(*typeMeta)
 		return

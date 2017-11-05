@@ -10,6 +10,8 @@ This package extends support to arbitrary, variable-sized values by prefixing th
  * Fast-paths encoding and decoding of `[]byte`, as I've designed this package to be used for inter-broker message encoding for [emitter](https://github.com/emitter-io/emitter).
  * Support for custom `BinaryMarshaler` and `BinaryUnmarshaler` for tighter packing control and built-in types such as `time.Time`.
 
+
+
 # Usage
 To serialize a message, simply `Marshal`:
 ```
@@ -28,3 +30,8 @@ To deserialize, `Unmarshal`:
 var v message
 err := binary.Unmarshal(encoded, &v)
 ```
+
+# Disclaimer
+
+This is not intended as a replacement for JSON or protobuf, this codec does not maintain any versioning or compatibility - and not intended to become one. The goal of this binary codec is to efficiently exchange binary data of known format between systems where you control both ends and both of them are written in Go.
+
