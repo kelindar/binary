@@ -9,11 +9,6 @@ import (
 // Map of all the schemas we've encountered so far
 var schemas = new(sync.Map)
 
-// Codec represents a single part codec, which can encode something.
-type codec interface {
-	EncodeTo(*Encoder, reflect.Value) error
-}
-
 // Encode encodes the value to the binary format.
 func scan(t reflect.Type) (c codec, err error) {
 
