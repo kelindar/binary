@@ -4,6 +4,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"reflect"
+	"unsafe"
+)
+
+// Constants
+var (
+	LittleEndian  = binary.LittleEndian
+	BigEndian     = binary.BigEndian
+	DefaultEndian = LittleEndian
 )
 
 // Codec represents a single part codec, which can encode something.
@@ -193,11 +201,16 @@ func (c *reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) 
 
 // ------------------------------------------------------------------------------
 
-type customMarshalCodec struct{}
+type customMarshalCodec struct {
+	marshaler      *reflect.Method
+	unmarshaler    *reflect.Method
+	ptrMarshaler   *reflect.Method
+	ptrUnmarshaler *reflect.Method
+}
 
 // Encode encodes a value into the encoder.
 func (c *customMarshalCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	m := getMetadata(rv.Type()).GetMarshalBinary(rv)
+	m := c.GetMarshalBinary(rv)
 	if m == nil {
 		return errors.New("MarshalBinary not found on " + rv.Type().String())
 	}
@@ -217,7 +230,7 @@ func (c *customMarshalCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) 
 
 // Decode decodes into a reflect value from the decoder.
 func (c *customMarshalCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	m := getMetadata(rv.Type()).GetUnmarshalBinary(rv)
+	m := c.GetUnmarshalBinary(rv)
 
 	var l uint64
 	if l, err = binary.ReadUvarint(d.r); err == nil {
@@ -230,6 +243,34 @@ func (c *customMarshalCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) 
 
 	}
 	return
+}
+
+func (c *customMarshalCodec) GetMarshalBinary(rv reflect.Value) *reflect.Value {
+	if c.marshaler != nil {
+		m := rv.Method(c.marshaler.Index)
+		return &m
+	}
+
+	if c.ptrMarshaler != nil {
+		m := rv.Addr().Method(c.ptrMarshaler.Index)
+		return &m
+	}
+
+	return nil
+}
+
+func (c *customMarshalCodec) GetUnmarshalBinary(rv reflect.Value) *reflect.Value {
+	if c.unmarshaler != nil {
+		m := rv.Method(c.unmarshaler.Index)
+		return &m
+	}
+
+	if c.ptrUnmarshaler != nil {
+		m := rv.Addr().Method(c.ptrUnmarshaler.Index)
+		return &m
+	}
+
+	return nil
 }
 
 // ------------------------------------------------------------------------------
@@ -299,7 +340,8 @@ func (c *stringCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if l, err = binary.ReadUvarint(d.r); err == nil {
 		buf := make([]byte, l)
 		_, err = d.r.Read(buf)
-		rv.SetString(byteSliceToString(buf))
+
+		rv.SetString(*(*string)(unsafe.Pointer(&buf)))
 	}
 	return
 }
@@ -428,32 +470,4 @@ func (c *float64Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	err = binary.Read(d.r, d.Order, &out)
 	rv.SetFloat(out)
 	return
-}
-
-// ------------------------------------------------------------------------------
-
-type ptrCodec struct {
-	pointee codec // Codec to the pointee
-}
-
-// Encode encodes a value into the encoder.
-func (c *ptrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	hasValue := !rv.IsNil()
-	e.writeBool(hasValue)
-
-	if hasValue {
-		err = c.pointee.EncodeTo(e, reflect.Indirect(rv))
-	}
-	return
-}
-
-// Decode decodes into a reflect value from the decoder.
-func (c *ptrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	/*var hasValue byte
-	if hasValue, err = d.r.ReadByte(); err == nil && hasValue == 1 {
-		v := reflect.New(rv.Type())
-		err = c.pointee.DecodeTo(d, v)
-	}*/
-
-	return errors.New("not implemented, this needs to new the pointee but does not have the type to do so")
 }

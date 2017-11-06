@@ -1,11 +1,25 @@
 package binary
 
 import (
+	"bytes"
 	"encoding/binary"
 	"io"
 	"reflect"
 	"sync"
+	"unsafe"
 )
+
+// Marshal encodes the payload into binary format.
+func Marshal(v interface{}) ([]byte, error) {
+	b := &bytes.Buffer{}
+	encoder := borrowEncoder(b)
+	defer encoder.release()
+
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
 
 // Encoder represents a binary encoder.
 type Encoder struct {
@@ -50,8 +64,6 @@ func (e *Encoder) Encode(v interface{}) (err error) {
 	}
 	return
 }
-
-//-----------------------------------------------------------------------
 
 // Reusable long-lived stream pool.
 var encoders = &sync.Pool{New: func() interface{} {
@@ -202,7 +214,17 @@ func (e *Encoder) writeBool(v bool) {
 
 func (e *Encoder) writeString(v string) {
 	e.writeUint64(uint64(len(v)))
-	e.Write(stringToByteSlice(&v))
+
+	strHeader := (*reflect.StringHeader)(unsafe.Pointer(&v))
+
+	var b []byte
+	byteHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	byteHeader.Data = strHeader.Data
+
+	l := len(v)
+	byteHeader.Len = l
+	byteHeader.Cap = l
+	e.Write(b)
 }
 
 // Flush writes any buffered data to the underlying io.Writer.

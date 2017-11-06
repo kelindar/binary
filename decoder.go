@@ -1,6 +1,7 @@
 package binary
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -11,6 +12,11 @@ import (
 type Reader interface {
 	io.Reader
 	io.ByteReader
+}
+
+// Unmarshal decodes the payload from the binary format.
+func Unmarshal(b []byte, v interface{}) error {
+	return NewDecoder(bytes.NewReader(b)).Decode(v)
 }
 
 // Decoder represents a binary decoder.
@@ -36,11 +42,9 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 
 	// Scan the type (this will load from cache)
 	var c codec
-	if c, err = scan(rv.Type()); err != nil {
-		return
+	if c, err = scan(rv.Type()); err == nil {
+		err = c.DecodeTo(d, rv)
 	}
 
-	// Encode and flush the encoder
-	err = c.DecodeTo(d, rv)
 	return
 }

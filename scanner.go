@@ -82,24 +82,19 @@ func scanType(t reflect.Type) (codec, error) {
 			}, nil
 		}
 
-	case reflect.Ptr:
-		elemCodec, err := scanType(t.Elem())
-		if err != nil {
-			return nil, err
-		}
-		return &ptrCodec{
-			pointee: elemCodec,
-		}, nil
-
 	case reflect.Struct:
-		meta := getMetadata(t)
-
-		if meta.IsCustom() {
-			return new(customMarshalCodec), nil
+		s := scanStruct(t)
+		if s.IsCustom() {
+			return &customMarshalCodec{
+				marshaler:      s.marshaler,
+				unmarshaler:    s.unmarshaler,
+				ptrMarshaler:   s.ptrMarshaler,
+				ptrUnmarshaler: s.ptrUnmarshaler,
+			}, nil
 		}
 
 		var v reflectStructCodec
-		for _, i := range meta.fields {
+		for _, i := range s.fields {
 			if c, err := scanType(t.Field(i).Type); err == nil {
 				v.fields = append(v.fields, fieldCodec{index: i, codec: c})
 			} else {
@@ -167,4 +162,40 @@ func scanType(t reflect.Type) (codec, error) {
 	}
 
 	return nil, errors.New("binary: unsupported type " + t.String())
+}
+
+type scannedStruct struct {
+	fields         []int
+	marshaler      *reflect.Method
+	unmarshaler    *reflect.Method
+	ptrMarshaler   *reflect.Method
+	ptrUnmarshaler *reflect.Method
+}
+
+func (s *scannedStruct) IsCustom() bool {
+	return (s.marshaler != nil || s.ptrMarshaler != nil) && (s.unmarshaler != nil || s.ptrUnmarshaler != nil)
+}
+
+func scanStruct(t reflect.Type) (meta *scannedStruct) {
+	l := t.NumField()
+	meta = new(scannedStruct)
+	for i := 0; i < l; i++ {
+		if t.Field(i).Name != "_" {
+			meta.fields = append(meta.fields, i)
+		}
+	}
+
+	if m, ok := t.MethodByName("MarshalBinary"); ok {
+		meta.marshaler = &m
+	} else if m, ok := reflect.PtrTo(t).MethodByName("MarshalBinary"); ok {
+		meta.ptrMarshaler = &m
+	}
+
+	if m, ok := t.MethodByName("UnmarshalBinary"); ok {
+		meta.unmarshaler = &m
+	} else if m, ok := reflect.PtrTo(t).MethodByName("UnmarshalBinary"); ok {
+		meta.ptrUnmarshaler = &m
+	}
+
+	return
 }
