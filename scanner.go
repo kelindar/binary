@@ -83,7 +83,13 @@ func scanType(t reflect.Type) (codec, error) {
 		}
 
 	case reflect.Ptr:
-		println("reflect.Ptr")
+		elemCodec, err := scanType(t.Elem())
+		if err != nil {
+			return nil, err
+		}
+		return &ptrCodec{
+			pointee: elemCodec,
+		}, nil
 
 	case reflect.Struct:
 		meta := getMetadata(t)

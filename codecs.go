@@ -34,7 +34,7 @@ func (c *reflectArrayCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *reflectArrayCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	l := rv.Type().Len()
 	for i := 0; i < l; i++ {
-		v := reflect.Indirect(rv.Index(i).Addr())
+		v := reflect.Indirect(rv.Index(i))
 		if err = c.elemCodec.DecodeTo(d, v); err != nil {
 			return
 		}
@@ -67,7 +67,7 @@ func (c *reflectSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if l, err = binary.ReadUvarint(d.r); err == nil {
 		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
 		for i := 0; i < int(l); i++ {
-			v := reflect.Indirect(rv.Index(i).Addr())
+			v := reflect.Indirect(rv.Index(i))
 			if err = c.elemCodec.DecodeTo(d, v); err != nil {
 				return
 			}
@@ -122,7 +122,7 @@ func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		for i := 0; i < int(l); i++ {
 			var v int64
 			if v, err = binary.ReadVarint(d.r); err == nil {
-				reflect.Indirect(rv.Index(i).Addr()).SetInt(v)
+				reflect.Indirect(rv.Index(i)).SetInt(v)
 			}
 		}
 	}
@@ -151,7 +151,7 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		for i := 0; i < int(l); i++ {
 			var v uint64
 			if v, err = binary.ReadUvarint(d.r); err == nil {
-				reflect.Indirect(rv.Index(i).Addr()).SetUint(v)
+				reflect.Indirect(rv.Index(i)).SetUint(v)
 			}
 		}
 	}
@@ -428,4 +428,32 @@ func (c *float64Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	err = binary.Read(d.r, d.Order, &out)
 	rv.SetFloat(out)
 	return
+}
+
+// ------------------------------------------------------------------------------
+
+type ptrCodec struct {
+	pointee codec // Codec to the pointee
+}
+
+// Encode encodes a value into the encoder.
+func (c *ptrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	hasValue := !rv.IsNil()
+	e.writeBool(hasValue)
+
+	if hasValue {
+		err = c.pointee.EncodeTo(e, reflect.Indirect(rv))
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *ptrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	/*var hasValue byte
+	if hasValue, err = d.r.ReadByte(); err == nil && hasValue == 1 {
+		v := reflect.New(rv.Type())
+		err = c.pointee.DecodeTo(d, v)
+	}*/
+
+	return errors.New("not implemented, this needs to new the pointee but does not have the type to do so")
 }

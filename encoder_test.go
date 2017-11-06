@@ -29,3 +29,19 @@ func TestBinaryEncodeStruct(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, s0b, b)
 }
+
+/*
+func TestPtrSlice(t *testing.T) {
+	v1 := []int{1, 2, 3}
+	v2 := []*int{&v1[0], &v1[1], &v1[2]}
+
+	b, err := Marshal(v2)
+	assert.NoError(t, err)
+	//assert.Equal(t, s0b, b)
+
+	var v3 []*int
+	Unmarshal(b, &v3)
+
+	assert.Equal(t, s0b, v3)
+}
+*/
