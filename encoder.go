@@ -134,43 +134,6 @@ func (e *Encoder) Write(p []byte) (nn int, err error) {
 	return nn, nil
 }
 
-// WriteByte writes a single byte.
-func (e *Encoder) writeByte(c byte) {
-	if e.Error != nil {
-		return
-	}
-	if e.Available() < 1 {
-		e.growAtLeast(1)
-	}
-	e.buf[e.n] = c
-	e.n++
-}
-
-func (e *Encoder) writeTwoBytes(c1 byte, c2 byte) {
-	if e.Error != nil {
-		return
-	}
-	if e.Available() < 2 {
-		e.growAtLeast(2)
-	}
-	e.buf[e.n] = c1
-	e.buf[e.n+1] = c2
-	e.n += 2
-}
-
-func (e *Encoder) writeThreeBytes(c1 byte, c2 byte, c3 byte) {
-	if e.Error != nil {
-		return
-	}
-	if e.Available() < 3 {
-		e.growAtLeast(3)
-	}
-	e.buf[e.n] = c1
-	e.buf[e.n+1] = c2
-	e.buf[e.n+2] = c3
-	e.n += 3
-}
-
 func (e *Encoder) writeInt64(v int64) {
 	if e.Error != nil {
 		return

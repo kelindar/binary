@@ -9,7 +9,8 @@ import (
 // Map of all the schemas we've encountered so far
 var schemas = new(sync.Map)
 
-// Encode encodes the value to the binary format.
+// Scan gets a codec for the type and uses a cached schema if the type was
+// previously scanned.
 func scan(t reflect.Type) (c codec, err error) {
 
 	// Attempt to load from cache first
