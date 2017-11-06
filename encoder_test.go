@@ -2,25 +2,50 @@ package binary
 
 import (
 	"bytes"
+	"encoding/gob"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func BenchmarkEncodeOne(b *testing.B) {
-	codec := NewEncoder(new(bytes.Buffer))
-	v := &msg{
-		Name:      "Roman",
-		Timestamp: 1242345235,
-		Payload:   []byte("hi"),
-		Ssid:      []uint32{1, 2, 3},
-	}
+var testMsg = &msg{
+	Name:      "Roman",
+	Timestamp: 1242345235,
+	Payload:   []byte("hi"),
+	Ssid:      []uint32{1, 2, 3},
+}
 
-	codec.Encode(v)
+func BenchmarkEncodeBinary(b *testing.B) {
+	codec := NewEncoder(new(bytes.Buffer))
+
+	codec.Encode(testMsg)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		codec.Encode(v)
+		codec.Encode(testMsg)
+	}
+}
+
+func BenchmarkEncodeGob(b *testing.B) {
+	codec := gob.NewEncoder(new(bytes.Buffer))
+
+	codec.Encode(testMsg)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		codec.Encode(testMsg)
+	}
+}
+
+func BenchmarkEncodeJson(b *testing.B) {
+	codec := json.NewEncoder(new(bytes.Buffer))
+
+	codec.Encode(testMsg)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		codec.Encode(testMsg)
 	}
 }
 

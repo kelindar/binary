@@ -135,44 +135,30 @@ func (e *Encoder) Write(p []byte) (nn int, err error) {
 }
 
 func (e *Encoder) writeInt64(v int64) {
-	if e.Error != nil {
-		return
+	if e.Error == nil {
+		e.ensure(10)
+		e.n += binary.PutVarint(e.buf[e.n:], v)
 	}
-	if e.Available() < 10 {
-		e.growAtLeast(10)
-	}
-
-	e.n += binary.PutVarint(e.buf[e.n:], v)
-	return
 }
 
 func (e *Encoder) writeUint64(v uint64) {
-	if e.Error != nil {
-		return
+	if e.Error == nil {
+		e.ensure(10)
+		e.n += binary.PutUvarint(e.buf[e.n:], v)
 	}
-	if e.Available() < 10 {
-		e.growAtLeast(10)
-	}
-
-	e.n += binary.PutUvarint(e.buf[e.n:], v)
-	return
 }
 
 func (e *Encoder) writeBool(v bool) {
-	if e.Error != nil {
-		return
-	}
-	if e.Available() < 1 {
-		e.growAtLeast(1)
-	}
+	if e.Error == nil {
+		e.ensure(1)
 
-	var b byte
-	if v {
-		b = 1
+		var b byte
+		if v {
+			b = 1
+		}
+		e.buf[e.n] = b
+		e.n++
 	}
-	e.buf[e.n] = b
-	e.n++
-	return
 }
 
 func (e *Encoder) writeString(v string) {
