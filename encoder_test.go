@@ -5,11 +5,12 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"testing"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
 
-var testMsg = &msg{
+var testMsg = msg{
 	Name:      "Roman",
 	Timestamp: 1242345235,
 	Payload:   []byte("hi"),
@@ -17,35 +18,28 @@ var testMsg = &msg{
 }
 
 func BenchmarkEncodeBinary(b *testing.B) {
-	codec := NewEncoder(new(bytes.Buffer))
-
-	codec.Encode(testMsg)
+	Marshal(&testMsg)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		codec.Encode(testMsg)
+		Marshal(&testMsg)
 	}
 }
 
 func BenchmarkEncodeGob(b *testing.B) {
 	codec := gob.NewEncoder(new(bytes.Buffer))
-
-	codec.Encode(testMsg)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		codec.Encode(testMsg)
+		codec.Encode(&testMsg)
 	}
 }
 
 func BenchmarkEncodeJson(b *testing.B) {
-	codec := json.NewEncoder(new(bytes.Buffer))
-
-	codec.Encode(testMsg)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		codec.Encode(testMsg)
+		json.Marshal(&testMsg)
 	}
 }
 
@@ -53,4 +47,9 @@ func TestBinaryEncodeStruct(t *testing.T) {
 	b, err := Marshal(s0v)
 	assert.NoError(t, err)
 	assert.Equal(t, s0b, b)
+}
+
+func TestEncoderSizeOf(t *testing.T) {
+	var e Encoder
+	assert.Equal(t, 64, int(unsafe.Sizeof(e)))
 }

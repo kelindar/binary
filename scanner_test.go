@@ -19,6 +19,6 @@ func TestScanner(t *testing.T) {
 	err = codec.EncodeTo(e, reflect.Indirect(reflect.ValueOf(s0v)))
 	assert.NoError(t, err)
 
-	e.Flush()
+	//e.Flush()
 	assert.Equal(t, s0b, b.Bytes())
 }
