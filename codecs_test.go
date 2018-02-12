@@ -56,6 +56,26 @@ type simpleStruct struct {
 	Ssid      []uint32
 }
 
+type sliceStruct struct {
+	Payload []byte
+}
+
+func TestBinaryEncode_EOF(t *testing.T) {
+	v := &sliceStruct{
+		Payload: nil,
+	}
+	output := []byte{0x0}
+
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.Equal(t, output, b)
+
+	s := &sliceStruct{}
+	err = Unmarshal(b, s)
+	assert.NoError(t, err)
+	assert.Equal(t, v, s)
+}
+
 func TestBinaryEncodeSimpleStruct(t *testing.T) {
 	v := &simpleStruct{
 		Name:      "Roman",
