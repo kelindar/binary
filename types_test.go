@@ -46,3 +46,29 @@ func Test_SortedSliceUint64(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, o)
 }
+
+func Test_SortedSliceInt32(t *testing.T) {
+	v := SortedInt32s{4, 5, 6, 1, 2, 3}
+
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o SortedInt32s
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
+func Test_SortedSliceUint32(t *testing.T) {
+	v := SortedUint32s{4, 5, 6, 1, 2, 3}
+
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o SortedUint32s
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
