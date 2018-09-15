@@ -27,9 +27,9 @@ var arr = []uint64{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1
 func BenchmarkUint64s_Safe(b *testing.B) {
 	v := arr
 	enc, _ := binary.Marshal(&v)
-	b.ReportAllocs()
 
 	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			binary.Marshal(&v)
@@ -37,6 +37,7 @@ func BenchmarkUint64s_Safe(b *testing.B) {
 	})
 
 	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		var out []uint64
 		for n := 0; n < b.N; n++ {
@@ -48,9 +49,9 @@ func BenchmarkUint64s_Safe(b *testing.B) {
 func BenchmarkUint64s_Unsafe(b *testing.B) {
 	v := Uint64s(arr)
 	enc, _ := binary.Marshal(&v)
-	b.ReportAllocs()
 
 	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			binary.Marshal(&v)
@@ -58,12 +59,77 @@ func BenchmarkUint64s_Unsafe(b *testing.B) {
 	})
 
 	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
 		b.ResetTimer()
 		var out Uint64s
 		for n := 0; n < b.N; n++ {
 			binary.Unmarshal(enc, &out)
 		}
 	})
+}
+
+func asBytes(v []uint64) (o []byte) {
+	for i := range v {
+		o = append(o, byte(v[i]))
+	}
+	return
+}
+
+func BenchmarkBytes_Safe(b *testing.B) {
+	v := asBytes(arr)
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out []uint64
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
+func BenchmarkBytes_Unsafe(b *testing.B) {
+	v := Bytes(asBytes(arr))
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out Uint64s
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
+func Test_Bytes(t *testing.T) {
+	v := Bytes{4, 5, 6, 1, 2, 3}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o Bytes
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
 }
 
 func Test_Bools(t *testing.T) {
