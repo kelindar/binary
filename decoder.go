@@ -4,36 +4,47 @@
 package binary
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
 	"reflect"
 )
 
-// Reader represents the interface a reader should implement
+// Reader represents the interface a reader should implement.
 type Reader interface {
 	io.Reader
 	io.ByteReader
 }
 
+// Slicer represents a reader which can slice without copying.
+type Slicer interface {
+	Slice(n int) ([]byte, error)
+}
+
 // Unmarshal decodes the payload from the binary format.
 func Unmarshal(b []byte, v interface{}) error {
-	return NewDecoder(bytes.NewReader(b)).Decode(v)
+	return NewDecoder(newReader(b)).Decode(v)
 }
 
 // Decoder represents a binary decoder.
 type Decoder struct {
 	Order   binary.ByteOrder
 	r       Reader
+	s       Slicer
 	scratch [10]byte
 }
 
 // NewDecoder creates a binary decoder.
 func NewDecoder(r Reader) *Decoder {
+	var slicer Slicer
+	if s, ok := r.(Slicer); ok {
+		slicer = s
+	}
+
 	return &Decoder{
 		Order: DefaultEndian,
 		r:     r,
+		s:     slicer,
 	}
 }
 
@@ -90,4 +101,22 @@ func (d *Decoder) ReadUint64() (out uint64, err error) {
 		out = d.Order.Uint64(d.scratch[:8])
 	}
 	return
+}
+
+// Slice selects a sub-slice of next bytes. This is similar to Read() but does not
+// actually perform a copy, but simply uses the underlying slice (if available) and
+// returns a sub-slice pointing to the same array. Since this requires access
+// to the underlying data, this is only available for our default reader.
+func (d *Decoder) Slice(n int) ([]byte, error) {
+	if d.s != nil {
+		return d.s.Slice(n)
+	}
+
+	// If we don't have a slicer, we can just allocate and read
+	buffer := make([]byte, n, n)
+	if _, err := d.Read(buffer); err != nil {
+		return nil, err
+	}
+
+	return buffer, nil
 }
