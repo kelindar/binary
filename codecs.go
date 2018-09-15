@@ -92,19 +92,25 @@ type byteSliceCodec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *byteSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	l := rv.Len()
-	e.WriteUvarint(uint64(l))
+	e.WriteUvarint(uint64(rv.Len()))
 	e.Write(rv.Bytes())
 	return
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *byteSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var l uint64
+	/*var l uint64
 	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
-		buffer := make([]byte, int(l))
+		buffer := make([]byte, int(l), int(l))
 		if _, err = d.r.Read(buffer); err == nil {
 			rv.Set(reflect.ValueOf(buffer))
+		}
+	}*/
+	var l uint64
+	if l, err = d.ReadUvarint(); err == nil && l > 0 {
+		data := make([]byte, int(l), int(l))
+		if _, err = d.Read(data); err == nil {
+			rv.Set(reflect.ValueOf(data))
 		}
 	}
 	return

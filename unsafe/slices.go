@@ -11,16 +11,6 @@ import (
 
 // ------------------------------------------------------------------------------
 
-// Bytes represents a slice serialized in an unsafe, non portable manner.
-type Bytes []byte
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Bytes) GetBinaryCodec() binary.Codec {
-	return new(byteSliceCodec)
-}
-
-// ------------------------------------------------------------------------------
-
 // Bools represents a slice serialized in an unsafe, non portable manner.
 type Bools []bool
 

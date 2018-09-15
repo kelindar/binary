@@ -10,31 +10,6 @@ import (
 	"github.com/kelindar/binary"
 )
 
-// ------------------------------------------------------------------------------
-
-type byteSliceCodec struct{}
-
-// EncodeTo encodes a value into the encoder.
-func (c *byteSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
-	e.WriteUint64(uint64(rv.Len()))
-	e.Write(*(*[]byte)(unsafe.Pointer(rv.Addr().Pointer())))
-	return
-}
-
-// DecodeTo decodes into a reflect value from the decoder.
-func (c *byteSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
-	var l uint64
-	if l, err = d.ReadUint64(); err == nil {
-		data := make([]byte, int(l), int(l))
-		if _, err = d.Read(data); err == nil {
-			rv.Set(reflect.ValueOf(data))
-		}
-	}
-	return
-}
-
-// ------------------------------------------------------------------------------
-
 type integerSliceCodec struct {
 	sliceType reflect.Type
 	sizeOfInt int
@@ -55,7 +30,7 @@ func (c *integerSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err e
 // DecodeTo decodes into a reflect value from the decoder.
 func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = d.ReadUint64(); err == nil {
+	if l, err = d.ReadUint64(); err == nil && l > 0 {
 		src := reflect.MakeSlice(c.sliceType, int(l), int(l))
 
 		var out reflect.SliceHeader
