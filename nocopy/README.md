@@ -1,4 +1,4 @@
-# Library of No-Copy on Decoding Types
+# Types with no-copy decoding
 
 This sub-package contains a set of typed sclices which can be useful for encoding/decoding large numerical slices faster. This is relatively unsafe and non-portable as the encoding simply copies the memory of the slice, hence disregarding byte order of the encoder/decoders. However, this lets us to avoid allocating and copying memory when encoding/decoding, making this at least 10x faster than the safe implementation. 
 
