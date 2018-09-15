@@ -14,11 +14,11 @@ var schemas = new(sync.Map)
 
 // Scan gets a codec for the type and uses a cached schema if the type was
 // previously scanned.
-func scan(t reflect.Type) (c codec, err error) {
+func scan(t reflect.Type) (c Codec, err error) {
 
 	// Attempt to load from cache first
 	if f, ok := schemas.Load(t); ok {
-		c = f.(codec)
+		c = f.(Codec)
 		return
 	}
 
@@ -30,15 +30,19 @@ func scan(t reflect.Type) (c codec, err error) {
 
 	// Load or store again
 	if f, ok := schemas.LoadOrStore(t, c); ok {
-		c = f.(codec)
+		c = f.(Codec)
 		return
 	}
 	return
 }
 
 // ScanType scans the type
-func scanType(t reflect.Type) (codec, error) {
+func scanType(t reflect.Type) (Codec, error) {
 	if custom, ok := scanCustomCodec(t); ok {
+		return custom, nil
+	}
+
+	if custom, ok := scanBinaryMarshaler(t); ok {
 		return custom, nil
 	}
 
@@ -179,8 +183,8 @@ func scanStruct(t reflect.Type) (meta *scannedStruct) {
 	return
 }
 
-// ScanCustom scans whether a type has a custom marshaling implemented.
-func scanCustomCodec(t reflect.Type) (out *customCodec, ok bool) {
+// scanBinaryMarshaler scans whether a type has a custom binary marshaling implemented.
+func scanBinaryMarshaler(t reflect.Type) (out *customCodec, ok bool) {
 	out = new(customCodec)
 	if m, ok := t.MethodByName("MarshalBinary"); ok {
 		out.marshaler = &m
@@ -200,4 +204,17 @@ func scanCustomCodec(t reflect.Type) (out *customCodec, ok bool) {
 	}
 
 	return nil, false
+}
+
+// scanCustomCodec scans whether a type has a custom codec implemented.
+func scanCustomCodec(t reflect.Type) (out Codec, ok bool) {
+	if m, ok := reflect.PtrTo(t).MethodByName("GetBinaryCodec"); ok {
+		callable := reflect.New(t).Method(m.Index)
+		result := callable.Call([]reflect.Value{})
+		if len(result) == 1 && !result[0].IsNil() {
+			out, ok = result[0].Interface().(Codec)
+			return out, ok
+		}
+	}
+	return
 }

@@ -16,8 +16,8 @@ var (
 	DefaultEndian = LittleEndian
 )
 
-// Codec represents a single part codec, which can encode something.
-type codec interface {
+// Codec represents a single part Codec, which can encode and decode something.
+type Codec interface {
 	EncodeTo(*Encoder, reflect.Value) error
 	DecodeTo(*Decoder, reflect.Value) error
 }
@@ -25,7 +25,7 @@ type codec interface {
 // ------------------------------------------------------------------------------
 
 type reflectArrayCodec struct {
-	elemCodec codec // The codec of the array's elements
+	elemCodec Codec // The codec of the array's elements
 }
 
 // Encode encodes a value into the encoder.
@@ -55,13 +55,13 @@ func (c *reflectArrayCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 // ------------------------------------------------------------------------------
 
 type reflectSliceCodec struct {
-	elemCodec codec // The codec of the slice's elements
+	elemCodec Codec // The codec of the slice's elements
 }
 
 // Encode encodes a value into the encoder.
 func (c *reflectSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
-	e.writeUint64(uint64(l))
+	e.WriteUvarint(uint64(l))
 	for i := 0; i < l; i++ {
 		v := reflect.Indirect(rv.Index(i).Addr())
 		if err = c.elemCodec.EncodeTo(e, v); err != nil {
@@ -93,8 +93,8 @@ type byteSliceCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *byteSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
-	e.writeUint64(uint64(l))
-	e.write(rv.Bytes())
+	e.WriteUvarint(uint64(l))
+	e.Write(rv.Bytes())
 	return
 }
 
@@ -117,9 +117,9 @@ type varintSliceCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
-	e.writeUint64(uint64(l))
+	e.WriteUvarint(uint64(l))
 	for i := 0; i < l; i++ {
-		e.writeInt64(rv.Index(i).Int())
+		e.WriteVarint(rv.Index(i).Int())
 	}
 	return
 }
@@ -146,9 +146,9 @@ type varuintSliceCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
-	e.writeUint64(uint64(l))
+	e.WriteUvarint(uint64(l))
 	for i := 0; i < l; i++ {
-		e.writeUint64(rv.Index(i).Uint())
+		e.WriteUvarint(rv.Index(i).Uint())
 	}
 	return
 }
@@ -176,7 +176,7 @@ type reflectStructCodec struct {
 
 type fieldCodec struct {
 	index int
-	codec codec
+	codec Codec
 }
 
 // Encode encodes a value into the encoder.
@@ -226,8 +226,8 @@ func (c *customCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 
 	// Write the marshaled byte slice
 	buffer := ret[0].Bytes()
-	e.writeUint64(uint64(len(buffer)))
-	e.write(buffer)
+	e.WriteUvarint(uint64(len(buffer)))
+	e.Write(buffer)
 	return
 }
 
@@ -279,13 +279,13 @@ func (c *customCodec) GetUnmarshalBinary(rv reflect.Value) *reflect.Value {
 // ------------------------------------------------------------------------------
 
 type reflectMapCodec struct {
-	key codec // Codec for the key
-	val codec // Codec for the value
+	key Codec // Codec for the key
+	val Codec // Codec for the value
 }
 
 // Encode encodes a value into the encoder.
 func (c *reflectMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	e.writeUint64(uint64(rv.Len()))
+	e.WriteUvarint(uint64(rv.Len()))
 
 	for _, key := range rv.MapKeys() {
 		value := rv.MapIndex(key)
@@ -372,7 +372,7 @@ type varintCodec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *varintCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeInt64(rv.Int())
+	e.WriteVarint(rv.Int())
 	return nil
 }
 
@@ -392,7 +392,7 @@ type varuintCodec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *varuintCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeUint64(rv.Uint())
+	e.WriteUvarint(rv.Uint())
 	return nil
 }
 

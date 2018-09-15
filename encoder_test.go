@@ -56,3 +56,16 @@ func TestEncoderSizeOf(t *testing.T) {
 	var e Encoder
 	assert.Equal(t, 64, int(unsafe.Sizeof(e)))
 }
+
+func TestMarshalWithCustomCodec(t *testing.T) {
+	v := testCustom("custom codec")
+
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var out testCustom
+	err = Unmarshal(b, &out)
+	assert.NoError(t, err)
+	assert.Equal(t, v, out)
+}

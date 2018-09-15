@@ -44,6 +44,8 @@ func (s *SortedInt64s) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+// ------------------------------------------------------------------------------
+
 // SortedUint64s represents a sorted uint64 slice.
 type SortedUint64s []uint64
 
@@ -79,6 +81,8 @@ func (s *SortedUint64s) UnmarshalBinary(data []byte) error {
 	return nil
 }
 
+// ------------------------------------------------------------------------------
+
 // SortedInt32s represents a sorted int32 slice.
 type SortedInt32s []int32
 
@@ -113,6 +117,8 @@ func (s *SortedInt32s) UnmarshalBinary(data []byte) error {
 
 	return nil
 }
+
+// ------------------------------------------------------------------------------
 
 // SortedUint32s represents a sorted uint64 slice.
 type SortedUint32s []uint32

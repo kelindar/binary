@@ -58,7 +58,7 @@ func (e *Encoder) Encode(v interface{}) (err error) {
 
 	// Scan the type (this will load from cache)
 	rv := reflect.Indirect(reflect.ValueOf(v))
-	var c codec
+	var c Codec
 	if c, err = scan(rv.Type()); err != nil {
 		return
 	}
@@ -71,22 +71,40 @@ func (e *Encoder) Encode(v interface{}) (err error) {
 }
 
 // Write writes the contents of p into the buffer.
-func (e *Encoder) write(p []byte) {
+func (e *Encoder) Write(p []byte) {
 	if e.err == nil {
 		_, e.err = e.out.Write(p)
 	}
 }
 
-// Writes a variable size integer
-func (e *Encoder) writeInt64(v int64) {
+// WriteVarint writes a variable size integer
+func (e *Encoder) WriteVarint(v int64) {
 	n := binary.PutVarint(e.scratch[:], v)
-	e.write(e.scratch[:n])
+	e.Write(e.scratch[:n])
 }
 
-// Writes a variable size unsigned integer
-func (e *Encoder) writeUint64(v uint64) {
+// WriteUvarint writes a variable size unsigned integer
+func (e *Encoder) WriteUvarint(v uint64) {
 	n := binary.PutUvarint(e.scratch[:], v)
-	e.write(e.scratch[:n])
+	e.Write(e.scratch[:n])
+}
+
+// WriteUint16 writes a Uint16
+func (e *Encoder) WriteUint16(v uint16) {
+	e.Order.PutUint16(e.scratch[0:2], v)
+	e.Write(e.scratch[:2])
+}
+
+// WriteUint32 writes a Uint32
+func (e *Encoder) WriteUint32(v uint32) {
+	e.Order.PutUint32(e.scratch[0:4], v)
+	e.Write(e.scratch[:4])
+}
+
+// WriteUint64 writes a Uint64
+func (e *Encoder) WriteUint64(v uint64) {
+	e.Order.PutUint64(e.scratch[0:8], v)
+	e.Write(e.scratch[:8])
 }
 
 // Writes a boolean value
@@ -95,12 +113,11 @@ func (e *Encoder) writeBool(v bool) {
 	if v {
 		e.scratch[0] = 1
 	}
-	e.write(e.scratch[:1])
+	e.Write(e.scratch[:1])
 }
 
 // Writes a complex number
 func (e *Encoder) writeComplex(v complex128) {
-
 	e.err = binary.Write(e.out, e.Order, v)
 }
 
@@ -111,6 +128,6 @@ func (e *Encoder) writeFloat(v float64) {
 
 // Writes a string
 func (e *Encoder) writeString(v string) {
-	e.writeUint64(uint64(len(v)))
-	e.write(convertToBytes(v))
+	e.WriteUvarint(uint64(len(v)))
+	e.Write(convertToBytes(v))
 }

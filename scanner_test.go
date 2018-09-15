@@ -11,6 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testCustom string
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (s *testCustom) GetBinaryCodec() Codec {
+	return new(stringCodec)
+}
+
 func TestScanner(t *testing.T) {
 	rt := reflect.Indirect(reflect.ValueOf(s0v)).Type()
 	codec, err := scan(rt)
@@ -24,4 +31,12 @@ func TestScanner(t *testing.T) {
 
 	//e.Flush()
 	assert.Equal(t, s0b, b.Bytes())
+}
+
+func TestScanner_Custom(t *testing.T) {
+	v := testCustom("test")
+	rt := reflect.Indirect(reflect.ValueOf(v)).Type()
+	codec, err := scan(rt)
+	assert.NoError(t, err)
+	assert.NotNil(t, codec)
 }
