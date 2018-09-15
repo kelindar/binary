@@ -11,19 +11,19 @@ import (
 
 const testString = "Donec egestas enim vitae turpis imperdiet ultricies. Vivamus sollicitudin in felis quis euismod. Nunc at tellus lectus."
 
-var arr = []uint64{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6,
-	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6}
+func makeUint64s(n int) (arr []uint64) {
+	for i := 0; i < n; i++ {
+		arr = append(arr, uint64(i))
+	}
+	return
+}
+
+func makeBytes(n int) (arr []byte) {
+	for i := 0; i < n; i++ {
+		arr = append(arr, byte(i%255))
+	}
+	return
+}
 
 func BenchmarkString_Safe(b *testing.B) {
 	v := testString
@@ -77,7 +77,7 @@ func asBytes(v []uint64) (o []byte) {
 }
 
 func BenchmarkBytes_Safe(b *testing.B) {
-	v := asBytes(arr)
+	v := makeBytes(500)
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -99,7 +99,7 @@ func BenchmarkBytes_Safe(b *testing.B) {
 }
 
 func BenchmarkBytes_Unsafe(b *testing.B) {
-	v := Bytes(asBytes(arr))
+	v := Bytes(makeBytes(500))
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -121,7 +121,7 @@ func BenchmarkBytes_Unsafe(b *testing.B) {
 }
 
 func BenchmarkUint64s_Safe(b *testing.B) {
-	v := arr
+	v := makeUint64s(500)
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -143,7 +143,7 @@ func BenchmarkUint64s_Safe(b *testing.B) {
 }
 
 func BenchmarkUint64s_Unsafe(b *testing.B) {
-	v := Uint64s(arr)
+	v := Uint64s(makeUint64s(500))
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {

@@ -94,17 +94,17 @@ type stringCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *stringCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) error {
 	v := rv.String()
-	e.WriteUint32(uint32(len(v)))
+	e.WriteUvarint(uint64(len(v)))
 	e.Write(convertToBytes(v))
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *stringCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
-	var l uint32
+	var l uint64
 	var v []byte
 
-	if l, err = d.ReadUint32(); err == nil {
+	if l, err = d.ReadUvarint(); err == nil {
 		if v, err = d.Slice(int(l)); err == nil {
 			rv.SetString(convertToString(&v))
 		}
