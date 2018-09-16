@@ -10,6 +10,7 @@ import (
 )
 
 const testString = "Donec egestas enim vitae turpis imperdiet ultricies. Vivamus sollicitudin in felis quis euismod. Nunc at tellus lectus."
+const defaultSize = 10000
 
 func makeUint64s(n int) (arr []uint64) {
 	for i := 0; i < n; i++ {
@@ -77,7 +78,7 @@ func asBytes(v []uint64) (o []byte) {
 }
 
 func BenchmarkBytes_Safe(b *testing.B) {
-	v := makeBytes(500)
+	v := makeBytes(defaultSize)
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -99,7 +100,7 @@ func BenchmarkBytes_Safe(b *testing.B) {
 }
 
 func BenchmarkBytes_Unsafe(b *testing.B) {
-	v := Bytes(makeBytes(500))
+	v := Bytes(makeBytes(defaultSize))
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -121,7 +122,7 @@ func BenchmarkBytes_Unsafe(b *testing.B) {
 }
 
 func BenchmarkUint64s_Safe(b *testing.B) {
-	v := makeUint64s(500)
+	v := makeUint64s(defaultSize)
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -143,7 +144,7 @@ func BenchmarkUint64s_Safe(b *testing.B) {
 }
 
 func BenchmarkUint64s_Unsafe(b *testing.B) {
-	v := Uint64s(makeUint64s(500))
+	v := Uint64s(makeUint64s(defaultSize))
 	enc, _ := binary.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {

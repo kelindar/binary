@@ -9,7 +9,13 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"sync"
 )
+
+// Reusable long-lived decoder pool.
+var decoders = &sync.Pool{New: func() interface{} {
+	return NewDecoder(newReader(nil))
+}}
 
 // Reader represents the interface a reader should implement.
 type Reader interface {
@@ -23,8 +29,16 @@ type Slicer interface {
 }
 
 // Unmarshal decodes the payload from the binary format.
-func Unmarshal(b []byte, v interface{}) error {
-	return NewDecoder(newReader(b)).Decode(v)
+func Unmarshal(b []byte, v interface{}) (err error) {
+
+	// Get the decoder from the pool, reset it
+	d := decoders.Get().(*Decoder)
+	d.r.(*reader).Reset(b) // Reset the reader
+
+	// Decode and set the buffer if successful and free the decoder
+	err = d.Decode(v)
+	decoders.Put(d)
+	return
 }
 
 // Decoder represents a binary decoder.
