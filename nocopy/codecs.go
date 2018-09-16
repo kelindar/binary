@@ -10,23 +10,6 @@ import (
 	"github.com/kelindar/binary"
 )
 
-func convertToString(buf *[]byte) string {
-	return *(*string)(unsafe.Pointer(buf))
-}
-
-func convertToBytes(v string) (b []byte) {
-	strHeader := (*reflect.StringHeader)(unsafe.Pointer(&v))
-	byteHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	byteHeader.Data = strHeader.Data
-
-	l := len(v)
-	byteHeader.Len = l
-	byteHeader.Cap = l
-	return
-}
-
-// ------------------------------------------------------------------------------
-
 type integerSliceCodec struct {
 	sliceType reflect.Type
 	sizeOfInt int
@@ -95,7 +78,7 @@ type stringCodec struct{}
 func (c *stringCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) error {
 	v := rv.String()
 	e.WriteUvarint(uint64(len(v)))
-	e.Write(convertToBytes(v))
+	e.Write(stringToBinary(v))
 	return nil
 }
 
@@ -106,7 +89,35 @@ func (c *stringCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) 
 
 	if l, err = d.ReadUvarint(); err == nil {
 		if v, err = d.Slice(int(l)); err == nil {
-			rv.SetString(convertToString(&v))
+			rv.SetString(binaryToString(&v))
+		}
+	}
+	return
+}
+
+// ------------------------------------------------------------------------------
+
+type boolSliceCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *boolSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	e.WriteUvarint(uint64(l))
+	if l > 0 {
+		v := rv.Interface().(Bools)
+		e.Write(boolsToBinary(&v))
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *boolSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	var v []byte
+
+	if l, err = d.ReadUvarint(); err == nil && l > 0 {
+		if v, err = d.Slice(int(l)); err == nil {
+			rv.Set(reflect.ValueOf(binaryToBools(&v)))
 		}
 	}
 	return

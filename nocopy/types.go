@@ -42,10 +42,7 @@ type Bools []bool
 
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Bools) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Bools{}),
-		sizeOfInt: 1,
-	}
+	return new(boolSliceCodec)
 }
 
 // ------------------------------------------------------------------------------
