@@ -34,13 +34,10 @@ func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err e
 
 	if l, err = d.ReadUint64(); err == nil && l > 0 {
 		if b, err = d.Slice(int(l)); err == nil {
-			src := reflect.New(c.sliceType)
-			out := (*reflect.SliceHeader)(unsafe.Pointer(src.Pointer()))
-
+			out := (*reflect.SliceHeader)(unsafe.Pointer(rv.UnsafeAddr()))
 			out.Data = reflect.ValueOf(b).Pointer()
 			out.Len = int(l) / c.sizeOfInt
 			out.Cap = int(l) / c.sizeOfInt
-			rv.Set(reflect.Indirect(src))
 		}
 	}
 	return

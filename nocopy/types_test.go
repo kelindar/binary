@@ -202,3 +202,22 @@ func Test_Float64(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, o)
 }
+
+type nested struct {
+	Numbers Uint64s
+}
+
+func Test_NestedUint64(t *testing.T) {
+	v := nested{
+		Numbers: Uint64s{4, 5, 6, 1, 2, 3},
+	}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o nested
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
