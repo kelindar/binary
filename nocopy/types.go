@@ -53,6 +53,10 @@ func (s *Bools) GetBinaryCodec() binary.Codec {
 // Uint16s represents a slice serialized in an unsafe, non portable manner.
 type Uint16s []uint16
 
+func (s Uint16s) Len() int           { return len(s) }
+func (s Uint16s) Less(i, j int) bool { return s[i] < s[j] }
+func (s Uint16s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Uint16s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
