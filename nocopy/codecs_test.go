@@ -163,3 +163,39 @@ func BenchmarkUint64s_Unsafe(b *testing.B) {
 		}
 	})
 }
+
+func BenchmarkColumnar_Unsafe(b *testing.B) {
+	v := composite{}
+	v["a"] = column{
+		Varchar: columnVarchar{
+			Nulls: Bools{false, false, false, true, false},
+			Sizes: Uint32s{2, 2, 2, 0, 2},
+			Bytes: Bytes{10, 10, 10, 10, 10, 10, 10, 10},
+		},
+	}
+	v["b"] = column{
+		Float64: columnFloat64{
+			Nulls:  Bools{false, false, false, true, false},
+			Floats: Float64s{1.1, 2.2, 3.3, 0, 4.4},
+		},
+	}
+
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out composite
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}

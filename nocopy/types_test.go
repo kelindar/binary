@@ -10,6 +10,56 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type composite map[string]column
+
+type column struct {
+	Varchar columnVarchar
+	Float64 columnFloat64
+	Float32 columnFloat32
+}
+
+type columnVarchar struct {
+	Nulls Bools
+	Sizes Uint32s
+	Bytes Bytes
+}
+
+type columnFloat64 struct {
+	Nulls  Bools
+	Floats Float64s
+}
+
+type columnFloat32 struct {
+	Nulls  Bools
+	Floats Float32s
+}
+
+func Test_Full(t *testing.T) {
+	v := composite{}
+	v["a"] = column{
+		Varchar: columnVarchar{
+			Nulls: Bools{false, false, false, true, false},
+			Sizes: Uint32s{2, 2, 2, 0, 2},
+			Bytes: Bytes{10, 10, 10, 10, 10, 10, 10, 10},
+		},
+	}
+	v["b"] = column{
+		Float64: columnFloat64{
+			Nulls:  Bools{false, false, false, true, false},
+			Floats: Float64s{1.1, 2.2, 3.3, 0, 4.4},
+		},
+	}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o composite
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
 func Test_String(t *testing.T) {
 	v := String("ABCD")
 

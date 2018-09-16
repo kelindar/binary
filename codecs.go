@@ -126,7 +126,7 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 // Decode decodes into a reflect value from the decoder.
 func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = binary.ReadUvarint(d.r); err == nil {
+	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
 		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
 		for i := 0; i < int(l); i++ {
 			var v int64
@@ -155,7 +155,7 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 // Decode decodes into a reflect value from the decoder.
 func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = binary.ReadUvarint(d.r); err == nil {
+	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
 		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
 		for i := 0; i < int(l); i++ {
 			var v uint64
