@@ -65,6 +65,11 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	return
 }
 
+// Read reads a set of bytes
+func (d *Decoder) Read(b []byte) (int, error) {
+	return d.r.Read(b)
+}
+
 // ReadUvarint reads a variable-length Uint64 from the buffer.
 func (d *Decoder) ReadUvarint() (uint64, error) {
 	return binary.ReadUvarint(d.r)
@@ -75,31 +80,29 @@ func (d *Decoder) ReadVarint() (int64, error) {
 	return binary.ReadVarint(d.r)
 }
 
-// Read reads a set of bytes
-func (d *Decoder) Read(b []byte) (int, error) {
-	return d.r.Read(b)
-}
-
 // ReadUint16 reads a uint16
 func (d *Decoder) ReadUint16() (out uint16, err error) {
-	if _, err = d.r.Read(d.scratch[:2]); err == nil {
-		out = d.Order.Uint16(d.scratch[:2])
+	var buffer []byte
+	if buffer, err = d.sliceOrScratch(2); err == nil {
+		out = d.Order.Uint16(buffer)
 	}
 	return
 }
 
 // ReadUint32 reads a uint32
 func (d *Decoder) ReadUint32() (out uint32, err error) {
-	if _, err = d.r.Read(d.scratch[:4]); err == nil {
-		out = d.Order.Uint32(d.scratch[:4])
+	var buffer []byte
+	if buffer, err = d.sliceOrScratch(4); err == nil {
+		out = d.Order.Uint32(buffer)
 	}
 	return
 }
 
 // ReadUint64 reads a uint64
 func (d *Decoder) ReadUint64() (out uint64, err error) {
-	if _, err = d.r.Read(d.scratch[:8]); err == nil {
-		out = d.Order.Uint64(d.scratch[:8])
+	var buffer []byte
+	if buffer, err = d.sliceOrScratch(8); err == nil {
+		out = d.Order.Uint64(buffer)
 	}
 	return
 }
@@ -119,6 +122,18 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 	if v, err = d.ReadUint64(); err == nil {
 		out = math.Float64frombits(v)
 	}
+	return
+}
+
+// sliceOrScratch a slice or reads into as scratch buffer. This is useful for values
+// which will get reallocated after this, such as ints, floats, etc.
+func (d *Decoder) sliceOrScratch(n int) (buffer []byte, err error) {
+	if d.s != nil {
+		return d.s.Slice(n)
+	}
+
+	buffer = d.scratch[:n]
+	_, err = d.r.Read(buffer)
 	return
 }
 

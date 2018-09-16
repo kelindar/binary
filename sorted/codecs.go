@@ -4,7 +4,6 @@
 package sorted
 
 import (
-	"bytes"
 	bin "encoding/binary"
 	"reflect"
 	"sort"
@@ -49,13 +48,13 @@ func (c *intSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error
 			elemType := c.sliceType.Elem()
 			slice := reflect.MakeSlice(c.sliceType, 0, 16)
 
-			// Using old implementation, can be optimised
-			read := bytes.NewReader(b)
+			// Iterate through and uncompress
 			prev := int64(0)
-			for read.Len() > 0 {
-				diff, _ := bin.ReadVarint(read)
+			for i := 0; i < len(b); {
+				diff, n := bin.Varint(b[i:])
 				prev = prev + diff
 				slice = reflect.Append(slice, reflect.ValueOf(prev).Convert(elemType))
+				i += n
 			}
 
 			rv.Set(slice)
@@ -103,13 +102,13 @@ func (c *uintSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 			elemType := c.sliceType.Elem()
 			slice := reflect.MakeSlice(c.sliceType, 0, 16)
 
-			// Using old implementation, can be optimised
-			read := bytes.NewReader(b)
+			// Iterate through and uncompress
 			prev := uint64(0)
-			for read.Len() > 0 {
-				diff, _ := bin.ReadUvarint(read)
+			for i := 0; i < len(b); {
+				diff, n := bin.Uvarint(b[i:])
 				prev = prev + diff
 				slice = reflect.Append(slice, reflect.ValueOf(prev).Convert(elemType))
+				i += n
 			}
 
 			rv.Set(slice)

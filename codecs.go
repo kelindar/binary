@@ -222,7 +222,8 @@ func (c *reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) 
 func (c *reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	for _, i := range c.fields {
 		if v := rv.Field(i.index); v.CanSet() {
-			if err = i.codec.DecodeTo(d, reflect.Indirect(v.Addr())); err != nil {
+			//if err = i.codec.DecodeTo(d, reflect.Indirect(v.Addr())); err != nil {
+			if err = i.codec.DecodeTo(d, reflect.Indirect(v)); err != nil {
 				return
 			}
 		}
