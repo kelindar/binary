@@ -44,42 +44,6 @@ type columnFloat32 struct {
 	Floats []float32
 }
 
-func BenchmarkColumnar(b *testing.B) {
-	v := composite{}
-	v["a"] = column{
-		Varchar: columnVarchar{
-			Nulls: []bool{false, false, false, true, false, false, false, false, true, false, false, false, false, true, false},
-			Sizes: []uint32{2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2},
-			Bytes: []byte{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
-		},
-	}
-	v["b"] = column{
-		Float64: columnFloat64{
-			Nulls:  []bool{false, false, false, true, false},
-			Floats: []float64{1.1, 2.2, 3.3, 0, 4.4},
-		},
-	}
-
-	enc, _ := Marshal(&v)
-
-	b.Run("marshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			Marshal(&v)
-		}
-	})
-
-	b.Run("unmarshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		var out composite
-		for n := 0; n < b.N; n++ {
-			Unmarshal(enc, &out)
-		}
-	})
-}
-
 func Test_Full(t *testing.T) {
 	v := composite{}
 	v["a"] = column{
@@ -106,30 +70,100 @@ func Test_Full(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
-func BenchmarkEncodeBinary(b *testing.B) {
-	Marshal(&testMsg)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		Marshal(&testMsg)
-	}
+//type benchStruct = composite
+
+type benchStruct = msg
+
+func newBenchStruct() benchStruct {
+	//return newComposite()
+	return testMsg
 }
 
-func BenchmarkEncodeGob(b *testing.B) {
-	codec := gob.NewEncoder(new(bytes.Buffer))
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		codec.Encode(&testMsg)
+func newComposite() composite {
+	v := composite{}
+	v["a"] = column{
+		Varchar: columnVarchar{
+			Nulls: []bool{false, false, false, true, false, false, false, false, true, false, false, false, false, true, false},
+			Sizes: []uint32{2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2},
+			Bytes: []byte{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+		},
 	}
+	v["b"] = column{
+		Float64: columnFloat64{
+			Nulls:  []bool{false, false, false, true, false},
+			Floats: []float64{1.1, 2.2, 3.3, 0, 4.4},
+		},
+	}
+	return v
 }
 
-func BenchmarkEncodeJson(b *testing.B) {
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		json.Marshal(&testMsg)
-	}
+func Benchmark_Binary(b *testing.B) {
+	v := newBenchStruct()
+	enc, _ := Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out benchStruct
+		for n := 0; n < b.N; n++ {
+			Unmarshal(enc, &out)
+		}
+	})
+}
+
+func Benchmark_Gob(b *testing.B) {
+	v := newBenchStruct()
+
+	buffer := new(bytes.Buffer)
+	codec := gob.NewEncoder(buffer)
+	codec.Encode(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			gob.NewEncoder(new(bytes.Buffer)).Encode(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out benchStruct
+		for n := 0; n < b.N; n++ {
+			gob.NewDecoder(buffer).Decode(&out)
+		}
+	})
+}
+
+func Benchmark_JSON(b *testing.B) {
+	v := newBenchStruct()
+	enc, _ := json.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			json.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out benchStruct
+		for n := 0; n < b.N; n++ {
+			json.Unmarshal(enc, &out)
+		}
+	})
 }
 
 func TestBinaryEncodeStruct(t *testing.T) {

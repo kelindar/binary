@@ -120,7 +120,7 @@ func (e *Encoder) WriteFloat64(v float64) {
 	e.Write(e.scratch[:8])
 }
 
-// Writes a boolean value
+// WriteBool writes a single boolean value into the buffer
 func (e *Encoder) writeBool(v bool) {
 	e.scratch[0] = 0
 	if v {
@@ -132,10 +132,4 @@ func (e *Encoder) writeBool(v bool) {
 // Writes a complex number
 func (e *Encoder) writeComplex(v complex128) {
 	e.err = binary.Write(e.out, e.Order, v)
-}
-
-// Writes a string
-func (e *Encoder) writeString(v string) {
-	e.WriteUvarint(uint64(len(v)))
-	e.Write(stringToBinary(v))
 }

@@ -125,6 +125,12 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 	return
 }
 
+// ReadBool reads a single boolean value from the slice.
+func (d *Decoder) ReadBool() (bool, error) {
+	b, err := d.r.ReadByte()
+	return b == 1, err
+}
+
 // sliceOrScratch a slice or reads into as scratch buffer. This is useful for values
 // which will get reallocated after this, such as ints, floats, etc.
 func (d *Decoder) sliceOrScratch(n int) (buffer []byte, err error) {

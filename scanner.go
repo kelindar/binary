@@ -103,8 +103,20 @@ func scanType(t reflect.Type) (Codec, error) {
 		s := scanStruct(t)
 		var v reflectStructCodec
 		for _, i := range s.fields {
-			if c, err := scanType(t.Field(i).Type); err == nil {
-				v.fields = append(v.fields, fieldCodec{index: i, codec: c})
+			field := t.Field(i)
+			if c, err := scanType(field.Type); err == nil {
+
+				var nillable bool
+				switch field.Type.Kind() {
+				case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Slice:
+					nillable = true
+				}
+
+				v.fields = append(v.fields, fieldCodec{
+					Index:    i,
+					Codec:    c,
+					Nillable: nillable,
+				})
 			} else {
 				return nil, err
 			}

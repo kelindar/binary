@@ -204,14 +204,15 @@ type reflectStructCodec struct {
 }
 
 type fieldCodec struct {
-	index int
-	codec Codec
+	Index    int   // The index of the field
+	Codec    Codec // The codec to use for this field
+	Nillable bool  // The type of the field can be nil or not
 }
 
 // Encode encodes a value into the encoder.
 func (c *reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	for _, i := range c.fields {
-		if err = i.codec.EncodeTo(e, rv.Field(i.index)); err != nil {
+		if err = i.Codec.EncodeTo(e, rv.Field(i.Index)); err != nil {
 			return
 		}
 	}
@@ -221,9 +222,8 @@ func (c *reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) 
 // Decode decodes into a reflect value from the decoder.
 func (c *reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	for _, i := range c.fields {
-		if v := rv.Field(i.index); v.CanSet() {
-			//if err = i.codec.DecodeTo(d, reflect.Indirect(v.Addr())); err != nil {
-			if err = i.codec.DecodeTo(d, reflect.Indirect(v)); err != nil {
+		if v := rv.Field(i.Index); v.CanSet() {
+			if err = i.Codec.DecodeTo(d, reflect.Indirect(v)); err != nil {
 				return
 			}
 		}
@@ -316,43 +316,123 @@ type reflectMapCodec struct {
 // Encode encodes a value into the encoder.
 func (c *reflectMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	e.WriteUvarint(uint64(rv.Len()))
-
 	for _, key := range rv.MapKeys() {
 		value := rv.MapIndex(key)
-		if err = c.key.EncodeTo(e, key); err != nil {
+		if err = c.writeKey(e, key); err != nil {
 			return err
 		}
+
 		if err = c.val.EncodeTo(e, value); err != nil {
 			return err
 		}
 	}
-
 	return
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *reflectMapCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = binary.ReadUvarint(d.r); err != nil {
-		return
+	if l, err = d.ReadUvarint(); err == nil {
+		t := rv.Type()
+		vt := t.Elem()
+		rv.Set(reflect.MakeMap(t))
+		for i := 0; i < int(l); i++ {
+
+			var kv reflect.Value
+			if kv, err = c.readKey(d, t.Key()); err != nil {
+				return
+			}
+
+			vv := reflect.Indirect(reflect.New(vt))
+			if err = c.val.DecodeTo(d, vv); err != nil {
+				return
+			}
+
+			rv.SetMapIndex(kv, vv)
+		}
 	}
+	return
+}
 
-	t := rv.Type()
-	kt := t.Key()
-	vt := t.Elem()
-	rv.Set(reflect.MakeMap(t))
-	for i := 0; i < int(l); i++ {
-		kv := reflect.Indirect(reflect.New(kt))
-		if err = c.key.DecodeTo(d, kv); err != nil {
-			return
+// Write key writes a key to the encoder
+func (c *reflectMapCodec) writeKey(e *Encoder, key reflect.Value) (err error) {
+	switch key.Kind() {
+
+	case reflect.Int16:
+		e.WriteUint16(uint16(key.Int()))
+	case reflect.Int32:
+		e.WriteUint32(uint32(key.Int()))
+	case reflect.Int64:
+		e.WriteUint64(uint64(key.Int()))
+
+	case reflect.Uint16:
+		e.WriteUint16(uint16(key.Uint()))
+	case reflect.Uint32:
+		e.WriteUint32(uint32(key.Uint()))
+	case reflect.Uint64:
+		e.WriteUint64(uint64(key.Uint()))
+
+	case reflect.String:
+		str := key.String()
+		e.WriteUint16(uint16(len(str)))
+		e.Write(stringToBinary(str))
+	default:
+		err = c.key.EncodeTo(e, key)
+	}
+	return
+}
+
+// Read key reads a key from the decoder
+func (c *reflectMapCodec) readKey(d *Decoder, keyType reflect.Type) (key reflect.Value, err error) {
+	switch keyType.Kind() {
+
+	case reflect.Int16:
+		var v uint16
+		if v, err = d.ReadUint16(); err == nil {
+			key = reflect.ValueOf(int16(v))
+		}
+	case reflect.Int32:
+		var v uint32
+		if v, err = d.ReadUint32(); err == nil {
+			key = reflect.ValueOf(int32(v))
+		}
+	case reflect.Int64:
+		var v uint64
+		if v, err = d.ReadUint64(); err == nil {
+			key = reflect.ValueOf(int64(v))
 		}
 
-		vv := reflect.Indirect(reflect.New(vt))
-		if err = c.val.DecodeTo(d, vv); err != nil {
-			return
+	case reflect.Uint16:
+		var v uint16
+		if v, err = d.ReadUint16(); err == nil {
+			key = reflect.ValueOf(v)
+		}
+	case reflect.Uint32:
+		var v uint32
+		if v, err = d.ReadUint32(); err == nil {
+			key = reflect.ValueOf(v)
+		}
+	case reflect.Uint64:
+		var v uint64
+		if v, err = d.ReadUint64(); err == nil {
+			key = reflect.ValueOf(v)
 		}
 
-		rv.SetMapIndex(kv, vv)
+	// String keys must have max length of 65536
+	case reflect.String:
+		var l uint16
+		var b []byte
+
+		if l, err = d.ReadUint16(); err == nil {
+			if b, err = d.Slice(int(l)); err == nil {
+				key = reflect.ValueOf(string(b))
+			}
+		}
+
+	// Default to a reflect-based approach
+	default:
+		key = reflect.Indirect(reflect.New(keyType))
+		err = c.key.DecodeTo(d, key)
 	}
 	return
 }
@@ -363,17 +443,21 @@ type stringCodec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *stringCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeString(rv.String())
+	str := rv.String()
+	e.WriteUvarint(uint64(len(str)))
+	e.Write(stringToBinary(str))
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *stringCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = binary.ReadUvarint(d.r); err == nil {
-		buf := make([]byte, l)
-		_, err = d.r.Read(buf)
-		rv.SetString(binaryToString(&buf))
+	var b []byte
+
+	if l, err = d.ReadUvarint(); err == nil {
+		if b, err = d.Slice(int(l)); err == nil {
+			rv.SetString(string(b))
+		}
 	}
 	return
 }
