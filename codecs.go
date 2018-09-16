@@ -477,15 +477,16 @@ type float32Codec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *float32Codec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeFloat(rv.Float())
+	e.WriteFloat32(float32(rv.Float()))
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *float32Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var out float32
-	err = binary.Read(d.r, d.Order, &out)
-	rv.SetFloat(float64(out))
+	var v float32
+	if v, err = d.ReadFloat32(); err == nil {
+		rv.SetFloat(float64(v))
+	}
 	return
 }
 
@@ -495,14 +496,15 @@ type float64Codec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *float64Codec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeFloat(rv.Float())
+	e.WriteFloat64(rv.Float())
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *float64Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var out float64
-	err = binary.Read(d.r, d.Order, &out)
-	rv.SetFloat(out)
+	var v float64
+	if v, err = d.ReadFloat64(); err == nil {
+		rv.SetFloat(v)
+	}
 	return
 }

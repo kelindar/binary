@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"reflect"
 )
 
@@ -99,6 +100,24 @@ func (d *Decoder) ReadUint32() (out uint32, err error) {
 func (d *Decoder) ReadUint64() (out uint64, err error) {
 	if _, err = d.r.Read(d.scratch[:8]); err == nil {
 		out = d.Order.Uint64(d.scratch[:8])
+	}
+	return
+}
+
+// ReadFloat32 reads a float32
+func (d *Decoder) ReadFloat32() (out float32, err error) {
+	var v uint32
+	if v, err = d.ReadUint32(); err == nil {
+		out = math.Float32frombits(v)
+	}
+	return
+}
+
+// ReadFloat64 reads a float64
+func (d *Decoder) ReadFloat64() (out float64, err error) {
+	var v uint64
+	if v, err = d.ReadUint64(); err == nil {
+		out = math.Float64frombits(v)
 	}
 	return
 }

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"reflect"
 	"sync"
 )
@@ -107,6 +108,18 @@ func (e *Encoder) WriteUint64(v uint64) {
 	e.Write(e.scratch[:8])
 }
 
+// WriteFloat32 a 32-bit floating point number
+func (e *Encoder) WriteFloat32(v float32) {
+	e.Order.PutUint32(e.scratch[0:4], math.Float32bits(v))
+	e.Write(e.scratch[:4])
+}
+
+// WriteFloat64 a 64-bit floating point number
+func (e *Encoder) WriteFloat64(v float64) {
+	e.Order.PutUint64(e.scratch[0:8], math.Float64bits(v))
+	e.Write(e.scratch[:8])
+}
+
 // Writes a boolean value
 func (e *Encoder) writeBool(v bool) {
 	e.scratch[0] = 0
@@ -118,11 +131,6 @@ func (e *Encoder) writeBool(v bool) {
 
 // Writes a complex number
 func (e *Encoder) writeComplex(v complex128) {
-	e.err = binary.Write(e.out, e.Order, v)
-}
-
-// Writes a floating point number
-func (e *Encoder) writeFloat(v float64) {
 	e.err = binary.Write(e.out, e.Order, v)
 }
 

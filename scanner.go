@@ -61,8 +61,7 @@ func scanType(t reflect.Type) (Codec, error) {
 
 		// Fast-paths for simple numeric slices and string slices
 		switch t.Elem().Kind() {
-		case reflect.Int8:
-			fallthrough
+
 		case reflect.Uint8:
 			return new(byteSliceCodec), nil
 
@@ -79,6 +78,8 @@ func scanType(t reflect.Type) (Codec, error) {
 			return new(varuintSliceCodec), nil
 
 		case reflect.Int:
+			fallthrough
+		case reflect.Int8:
 			fallthrough
 		case reflect.Int16:
 			fallthrough

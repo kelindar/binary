@@ -349,3 +349,29 @@ func TestMarshalNonPointer(t *testing.T) {
 		t.Fatalf("expect %v got %v", s, res)
 	}
 }
+
+func Test_Float32(t *testing.T) {
+	v := float32(1.15)
+
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o float32
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
+func Test_Float64(t *testing.T) {
+	v := float64(1.15)
+
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o float64
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
