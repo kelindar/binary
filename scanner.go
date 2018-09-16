@@ -66,6 +66,9 @@ func scanType(t reflect.Type) (Codec, error) {
 		case reflect.Uint8:
 			return new(byteSliceCodec), nil
 
+		case reflect.Bool:
+			return new(boolSliceCodec), nil
+
 		case reflect.Uint:
 			fallthrough
 		case reflect.Uint16:

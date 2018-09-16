@@ -111,6 +111,32 @@ func (c *byteSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 // ------------------------------------------------------------------------------
 
+type boolSliceCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *boolSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	e.WriteUvarint(uint64(l))
+	if l > 0 {
+		v := rv.Interface().([]bool)
+		e.Write(boolsToBinary(&v))
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *boolSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err == nil && l > 0 {
+		buf := make([]byte, l)
+		_, err = d.r.Read(buf)
+		rv.Set(reflect.ValueOf(binaryToBools(&buf)))
+	}
+	return
+}
+
+// ------------------------------------------------------------------------------
+
 type varintSliceCodec struct{}
 
 // Encode encodes a value into the encoder.
@@ -127,13 +153,15 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
-		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
+		slice := reflect.MakeSlice(rv.Type(), int(l), int(l))
 		for i := 0; i < int(l); i++ {
 			var v int64
 			if v, err = binary.ReadVarint(d.r); err == nil {
-				reflect.Indirect(rv.Index(i)).SetInt(v)
+				slice.Index(i).SetInt(v)
 			}
 		}
+
+		rv.Set(slice)
 	}
 	return
 }
@@ -156,13 +184,15 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
-		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
+		slice := reflect.MakeSlice(rv.Type(), int(l), int(l))
 		for i := 0; i < int(l); i++ {
 			var v uint64
 			if v, err = binary.ReadUvarint(d.r); err == nil {
-				reflect.Indirect(rv.Index(i)).SetUint(v)
+				slice.Index(i).SetUint(v)
 			}
 		}
+
+		rv.Set(slice)
 	}
 	return
 }
@@ -342,7 +372,7 @@ func (c *stringCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if l, err = binary.ReadUvarint(d.r); err == nil {
 		buf := make([]byte, l)
 		_, err = d.r.Read(buf)
-		rv.SetString(convertToString(&buf))
+		rv.SetString(binaryToString(&buf))
 	}
 	return
 }

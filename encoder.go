@@ -129,5 +129,5 @@ func (e *Encoder) writeFloat(v float64) {
 // Writes a string
 func (e *Encoder) writeString(v string) {
 	e.WriteUvarint(uint64(len(v)))
-	e.Write(convertToBytes(v))
+	e.Write(stringToBinary(v))
 }

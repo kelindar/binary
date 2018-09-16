@@ -44,6 +44,42 @@ type columnFloat32 struct {
 	Floats []float32
 }
 
+func BenchmarkColumnar(b *testing.B) {
+	v := composite{}
+	v["a"] = column{
+		Varchar: columnVarchar{
+			Nulls: []bool{false, false, false, true, false, false, false, false, true, false, false, false, false, true, false},
+			Sizes: []uint32{2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2},
+			Bytes: []byte{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+		},
+	}
+	v["b"] = column{
+		Float64: columnFloat64{
+			Nulls:  []bool{false, false, false, true, false},
+			Floats: []float64{1.1, 2.2, 3.3, 0, 4.4},
+		},
+	}
+
+	enc, _ := Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out composite
+		for n := 0; n < b.N; n++ {
+			Unmarshal(enc, &out)
+		}
+	})
+}
+
 func Test_Full(t *testing.T) {
 	v := composite{}
 	v["a"] = column{

@@ -168,9 +168,9 @@ func BenchmarkColumnar_Unsafe(b *testing.B) {
 	v := composite{}
 	v["a"] = column{
 		Varchar: columnVarchar{
-			Nulls: Bools{false, false, false, true, false},
-			Sizes: Uint32s{2, 2, 2, 0, 2},
-			Bytes: Bytes{10, 10, 10, 10, 10, 10, 10, 10},
+			Nulls: Bools{false, false, false, true, false, false, false, false, true, false, false, false, false, true, false},
+			Sizes: Uint32s{2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2},
+			Bytes: Bytes{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
 		},
 	}
 	v["b"] = column{
