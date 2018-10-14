@@ -8,11 +8,12 @@ This implementation simply maps the byte slice provided in `Unmarshal` call to t
 
 # Benchmark
 
+Array of 10K elements:
 ```
-BenchmarkUint64s_Safe/marshal-8                   200000              8801 ns/op            1120 B/op          4 allocs/op
-BenchmarkUint64s_Safe/unmarshal-8                 100000             14431 ns/op            4224 B/op          4 allocs/op
-BenchmarkUint64s_Unsafe/marshal-8                1000000              1803 ns/op            4209 B/op          2 allocs/op
-BenchmarkUint64s_Unsafe/unmarshal-8              5000000               337 ns/op             160 B/op          4 allocs/op
+BenchmarkUint64s_Safe/marshal-8         	   50000	     22914 ns/op	    2272 B/op	       5 allocs/op
+BenchmarkUint64s_Safe/unmarshal-8       	   50000	     33724 ns/op	    4129 B/op	       2 allocs/op
+BenchmarkUint64s_Unsafe/marshal-8       	 1000000	      2224 ns/op	    4977 B/op	       2 allocs/op
+BenchmarkUint64s_Unsafe/unmarshal-8     	 5000000	       365 ns/op	      32 B/op	       1 allocs/op
 ```
 
 # Usage
