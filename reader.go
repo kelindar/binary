@@ -63,7 +63,7 @@ func (r *reader) ReadByte() (byte, error) {
 // returns a sub-slice pointing to the same array. Since this requires access
 // to the underlying data, this is only available for our default reader.
 func (r *reader) Slice(n int) ([]byte, error) {
-	if r.i >= int64(len(r.s)) {
+	if r.i+int64(n) > int64(len(r.s)) {
 		return nil, io.EOF
 	}
 

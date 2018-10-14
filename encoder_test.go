@@ -174,7 +174,7 @@ func TestBinaryEncodeStruct(t *testing.T) {
 
 func TestEncoderSizeOf(t *testing.T) {
 	var e Encoder
-	assert.Equal(t, 64, int(unsafe.Sizeof(e)))
+	assert.Equal(t, 48, int(unsafe.Sizeof(e)))
 }
 
 func TestMarshalWithCustomCodec(t *testing.T) {

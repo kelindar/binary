@@ -11,9 +11,8 @@ import (
 
 // Constants
 var (
-	LittleEndian  = binary.LittleEndian
-	BigEndian     = binary.BigEndian
-	DefaultEndian = LittleEndian
+	LittleEndian = binary.LittleEndian
+	BigEndian    = binary.BigEndian
 )
 
 // Codec represents a single part Codec, which can encode and decode something.
@@ -474,9 +473,10 @@ func (c *boolCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
 
 // Decode decodes into a reflect value from the decoder.
 func (c *boolCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var out byte
-	err = binary.Read(d.r, d.Order, &out)
-	rv.SetBool(out != 0)
+	var out bool
+	if out, err = d.ReadBool(); err == nil {
+		rv.SetBool(out)
+	}
 	return
 }
 
@@ -526,14 +526,14 @@ type complex64Codec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *complex64Codec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeComplex(rv.Complex())
+	e.writeComplex64(complex64(rv.Complex()))
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *complex64Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var out complex64
-	err = binary.Read(d.r, d.Order, &out)
+	out, err = d.readComplex64()
 	rv.SetComplex(complex128(out))
 	return
 }
@@ -544,14 +544,14 @@ type complex128Codec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *complex128Codec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	e.writeComplex(rv.Complex())
+	e.writeComplex128(rv.Complex())
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *complex128Codec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var out complex128
-	err = binary.Read(d.r, d.Order, &out)
+	out, err = d.readComplex128()
 	rv.SetComplex(out)
 	return
 }

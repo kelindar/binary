@@ -43,7 +43,6 @@ func Unmarshal(b []byte, v interface{}) (err error) {
 
 // Decoder represents a binary decoder.
 type Decoder struct {
-	Order   binary.ByteOrder
 	r       Reader
 	s       Slicer
 	scratch [10]byte
@@ -57,9 +56,8 @@ func NewDecoder(r Reader) *Decoder {
 	}
 
 	return &Decoder{
-		Order: DefaultEndian,
-		r:     r,
-		s:     slicer,
+		r: r,
+		s: slicer,
 	}
 }
 
@@ -96,27 +94,31 @@ func (d *Decoder) ReadVarint() (int64, error) {
 
 // ReadUint16 reads a uint16
 func (d *Decoder) ReadUint16() (out uint16, err error) {
-	var buffer []byte
-	if buffer, err = d.sliceOrScratch(2); err == nil {
-		out = d.Order.Uint16(buffer)
+	var b []byte
+	if b, err = d.sliceOrScratch(2); err == nil {
+		_ = b[1] // bounds check hint to compiler
+		out = (uint16(b[0]) | uint16(b[1])<<8)
 	}
 	return
 }
 
 // ReadUint32 reads a uint32
 func (d *Decoder) ReadUint32() (out uint32, err error) {
-	var buffer []byte
-	if buffer, err = d.sliceOrScratch(4); err == nil {
-		out = d.Order.Uint32(buffer)
+	var b []byte
+	if b, err = d.sliceOrScratch(4); err == nil {
+		_ = b[3] // bounds check hint to compiler
+		out = (uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24)
 	}
 	return
 }
 
 // ReadUint64 reads a uint64
 func (d *Decoder) ReadUint64() (out uint64, err error) {
-	var buffer []byte
-	if buffer, err = d.sliceOrScratch(8); err == nil {
-		out = d.Order.Uint64(buffer)
+	var b []byte
+	if b, err = d.sliceOrScratch(8); err == nil {
+		_ = b[7] // bounds check hint to compiler
+		out = (uint64(b[0]) | uint64(b[1])<<8 | uint64(b[2])<<16 | uint64(b[3])<<24 |
+			uint64(b[4])<<32 | uint64(b[5])<<40 | uint64(b[6])<<48 | uint64(b[7])<<56)
 	}
 	return
 }
@@ -143,6 +145,18 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 func (d *Decoder) ReadBool() (bool, error) {
 	b, err := d.r.ReadByte()
 	return b == 1, err
+}
+
+// ReadComplex reads a complex64
+func (d *Decoder) readComplex64() (out complex64, err error) {
+	err = binary.Read(d.r, binary.LittleEndian, &out)
+	return
+}
+
+// ReadComplex reads a complex128
+func (d *Decoder) readComplex128() (out complex128, err error) {
+	err = binary.Read(d.r, binary.LittleEndian, &out)
+	return
 }
 
 // sliceOrScratch a slice or reads into as scratch buffer. This is useful for values

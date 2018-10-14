@@ -14,9 +14,7 @@ import (
 
 // Reusable long-lived encoder pool.
 var encoders = &sync.Pool{New: func() interface{} {
-	return &Encoder{
-		Order: DefaultEndian,
-	}
+	return new(Encoder)
 }}
 
 // Marshal encodes the payload into binary format.
@@ -43,14 +41,12 @@ type Encoder struct {
 	scratch [10]byte
 	out     io.Writer
 	err     error
-	Order   binary.ByteOrder
 }
 
 // NewEncoder creates a new encoder.
 func NewEncoder(out io.Writer) *Encoder {
 	return &Encoder{
-		Order: DefaultEndian,
-		out:   out,
+		out: out,
 	}
 }
 
@@ -80,44 +76,70 @@ func (e *Encoder) Write(p []byte) {
 
 // WriteVarint writes a variable size integer
 func (e *Encoder) WriteVarint(v int64) {
-	n := binary.PutVarint(e.scratch[:], v)
-	e.Write(e.scratch[:n])
+	x := uint64(v) << 1
+	if v < 0 {
+		x = ^x
+	}
+
+	i := 0
+	for x >= 0x80 {
+		e.scratch[i] = byte(x) | 0x80
+		x >>= 7
+		i++
+	}
+	e.scratch[i] = byte(x)
+	e.Write(e.scratch[:(i + 1)])
 }
 
 // WriteUvarint writes a variable size unsigned integer
-func (e *Encoder) WriteUvarint(v uint64) {
-	n := binary.PutUvarint(e.scratch[:], v)
-	e.Write(e.scratch[:n])
+func (e *Encoder) WriteUvarint(x uint64) {
+	i := 0
+	for x >= 0x80 {
+		e.scratch[i] = byte(x) | 0x80
+		x >>= 7
+		i++
+	}
+	e.scratch[i] = byte(x)
+	e.Write(e.scratch[:(i + 1)])
 }
 
 // WriteUint16 writes a Uint16
 func (e *Encoder) WriteUint16(v uint16) {
-	e.Order.PutUint16(e.scratch[0:2], v)
+	e.scratch[0] = byte(v)
+	e.scratch[1] = byte(v >> 8)
 	e.Write(e.scratch[:2])
 }
 
 // WriteUint32 writes a Uint32
 func (e *Encoder) WriteUint32(v uint32) {
-	e.Order.PutUint32(e.scratch[0:4], v)
+	e.scratch[0] = byte(v)
+	e.scratch[1] = byte(v >> 8)
+	e.scratch[2] = byte(v >> 16)
+	e.scratch[3] = byte(v >> 24)
 	e.Write(e.scratch[:4])
 }
 
 // WriteUint64 writes a Uint64
 func (e *Encoder) WriteUint64(v uint64) {
-	e.Order.PutUint64(e.scratch[0:8], v)
+	e.scratch[0] = byte(v)
+	e.scratch[1] = byte(v >> 8)
+	e.scratch[2] = byte(v >> 16)
+	e.scratch[3] = byte(v >> 24)
+	e.scratch[4] = byte(v >> 32)
+	e.scratch[5] = byte(v >> 40)
+	e.scratch[6] = byte(v >> 48)
+	e.scratch[7] = byte(v >> 56)
 	e.Write(e.scratch[:8])
 }
 
 // WriteFloat32 a 32-bit floating point number
 func (e *Encoder) WriteFloat32(v float32) {
-	e.Order.PutUint32(e.scratch[0:4], math.Float32bits(v))
-	e.Write(e.scratch[:4])
+	e.WriteUint32(math.Float32bits(v))
 }
 
 // WriteFloat64 a 64-bit floating point number
 func (e *Encoder) WriteFloat64(v float64) {
-	e.Order.PutUint64(e.scratch[0:8], math.Float64bits(v))
-	e.Write(e.scratch[:8])
+	e.WriteUint64(math.Float64bits(v))
 }
 
 // WriteBool writes a single boolean value into the buffer
@@ -130,6 +152,11 @@ func (e *Encoder) writeBool(v bool) {
 }
 
 // Writes a complex number
-func (e *Encoder) writeComplex(v complex128) {
-	e.err = binary.Write(e.out, e.Order, v)
+func (e *Encoder) writeComplex64(v complex64) {
+	e.err = binary.Write(e.out, binary.LittleEndian, v)
+}
+
+// Writes a complex number
+func (e *Encoder) writeComplex128(v complex128) {
+	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
