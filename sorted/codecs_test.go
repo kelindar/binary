@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kelindar/binary"
+	"github.com/stretchr/testify/assert"
 )
 
 // 1000000	      1133 ns/op	     336 B/op	       9 allocs/op
@@ -33,4 +34,13 @@ func BenchmarkSortedSlice(b *testing.B) {
 			binary.Unmarshal(enc, &out)
 		}
 	})
+}
+
+func TestPayload(t *testing.T) {
+	encoded := []byte{0x8, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2}
+
+	v := Int32s{1, 2, 3, 4, 5, 6, 7, 8}
+	ev, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.Equal(t, encoded, ev)
 }

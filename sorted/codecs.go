@@ -11,6 +11,14 @@ import (
 	"github.com/kelindar/binary"
 )
 
+// IntsCodecAs returns an int slice codec with the specified precision and type.
+func IntsCodecAs(sliceType reflect.Type, sizeOfInt int) binary.Codec {
+	return &intSliceCodec{
+		sliceType: sliceType,
+		sizeOfInt: sizeOfInt,
+	}
+}
+
 type intSliceCodec struct {
 	sliceType reflect.Type
 	sizeOfInt int
@@ -64,6 +72,14 @@ func (c *intSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error
 }
 
 // ------------------------------------------------------------------------------
+
+// UintsCodecAs returns an uint slice codec with the specified precision and type.
+func UintsCodecAs(sliceType reflect.Type, sizeOfInt int) binary.Codec {
+	return &uintSliceCodec{
+		sliceType: sliceType,
+		sizeOfInt: sizeOfInt,
+	}
+}
 
 type uintSliceCodec struct {
 	sliceType reflect.Type
