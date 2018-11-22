@@ -1,4 +1,4 @@
-module github.com/Kelindar/binary
+module github.com/ChristophPech/binary
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
