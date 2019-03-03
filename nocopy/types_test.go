@@ -60,6 +60,23 @@ func Test_Full(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
+func Test_Dictionary(t *testing.T) {
+	v := Dictionary{
+		"name":   "Roman",
+		"race":   "human",
+		"status": "happy",
+	}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o Dictionary
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
 func Test_String(t *testing.T) {
 	v := String("ABCD")
 

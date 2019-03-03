@@ -48,6 +48,33 @@ func BenchmarkString_Safe(b *testing.B) {
 	})
 }
 
+func BenchmarkDictionary_Unsafe(b *testing.B) {
+	v := Dictionary{
+		"name":   "Roman",
+		"race":   "human",
+		"status": "happy",
+	}
+
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out String
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
 func BenchmarkString_Unsafe(b *testing.B) {
 	v := String(testString)
 	enc, _ := binary.Marshal(&v)

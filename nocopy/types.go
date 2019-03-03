@@ -180,3 +180,14 @@ func (s *Float64s) GetBinaryCodec() binary.Codec {
 		sizeOfInt: 8,
 	}
 }
+
+// ------------------------------------------------------------------------------
+
+// Dictionary represents a map where both keys and values are strings. It is
+// serialized in an unsafe, non portable manner.
+type Dictionary map[string]string
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (d *Dictionary) GetBinaryCodec() binary.Codec {
+	return new(dictionaryCodec)
+}

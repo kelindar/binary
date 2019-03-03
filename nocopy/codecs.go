@@ -119,3 +119,52 @@ func (c *boolSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 	}
 	return
 }
+
+// -----------------------------------------------------------------------------
+
+// The codec to use for marshaling the properties
+type dictionaryCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *dictionaryCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
+	dict := rv.Interface().(Dictionary)
+	e.WriteUint16(uint16(len(dict)))
+	for k, v := range dict {
+		encodeString(e, k)
+		encodeString(e, v)
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *dictionaryCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
+	var size uint16
+	if size, err = d.ReadUint16(); err == nil {
+		dict := make(Dictionary)
+		rv.Set(reflect.ValueOf(dict))
+		for i := 0; i < int(size); i++ {
+			k, _ := decodeString(d)
+			v, _ := decodeString(d)
+			dict[k] = v
+		}
+	}
+	return
+}
+
+// encodeString writes a string to the encoder
+func encodeString(e *binary.Encoder, v string) {
+	e.WriteUvarint(uint64(len(v)))
+	e.Write(stringToBinary(v))
+}
+
+// decodeString reads a string from the decoder
+func decodeString(d *binary.Decoder) (v string, err error) {
+	var l uint64
+	var b []byte
+	if l, err = d.ReadUvarint(); err == nil {
+		if b, err = d.Slice(int(l)); err == nil {
+			v = binaryToString(&b)
+		}
+	}
+	return
+}
