@@ -25,8 +25,7 @@ func Marshal(v interface{}) (output []byte, err error) {
 
 	// Get the encoder from the pool, reset it
 	e := encoders.Get().(*Encoder)
-	e.out = &buffer
-	e.err = nil
+	e.Reset(&buffer)
 
 	// Encode and set the buffer if successful
 	if err = e.Encode(v); err == nil {
@@ -52,6 +51,12 @@ func NewEncoder(out io.Writer) *Encoder {
 		out:     out,
 		schemas: make(map[reflect.Type]Codec),
 	}
+}
+
+// Reset resets the encoder and makes it ready to be reused.
+func (e *Encoder) Reset(out io.Writer) {
+	e.out = out
+	e.err = nil
 }
 
 // Encode encodes the value to the binary format.
