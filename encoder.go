@@ -59,6 +59,11 @@ func (e *Encoder) Reset(out io.Writer) {
 	e.err = nil
 }
 
+// Buffer returns the underlying writer.
+func (e *Encoder) Buffer() io.Writer {
+	return e.out
+}
+
 // Encode encodes the value to the binary format.
 func (e *Encoder) Encode(v interface{}) (err error) {
 
