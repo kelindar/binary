@@ -10,10 +10,10 @@ This implementation simply maps the byte slice provided in `Unmarshal` call to t
 
 Array of 10K elements:
 ```
-BenchmarkUint64s_Safe/marshal-8         	   50000	     22914 ns/op	    2272 B/op	       5 allocs/op
-BenchmarkUint64s_Safe/unmarshal-8       	   50000	     33724 ns/op	    4129 B/op	       2 allocs/op
-BenchmarkUint64s_Unsafe/marshal-8       	 1000000	      2224 ns/op	    4977 B/op	       2 allocs/op
-BenchmarkUint64s_Unsafe/unmarshal-8     	 5000000	       365 ns/op	      32 B/op	       1 allocs/op
+BenchmarkUint64s_Safe/marshal-8         	   10000	    167612 ns/op	   78325 B/op	      11 allocs/op
+BenchmarkUint64s_Safe/unmarshal-8       	    5000	    286769 ns/op	   81975 B/op	       2 allocs/op
+BenchmarkUint64s_Unsafe/marshal-8         	  100000	     10711 ns/op	   82055 B/op	       3 allocs/op
+BenchmarkUint64s_Unsafe/unmarshal-8       	20000000	       109 ns/op	       0 B/op	       0 allocs/op
 ```
 
 # Usage

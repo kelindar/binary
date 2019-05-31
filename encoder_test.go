@@ -97,8 +97,9 @@ func newComposite() composite {
 	return v
 }
 
-// Benchmark_Binary/marshal-8         	 5000000	       349 ns/op	     112 B/op	       2 allocs/op
-// Benchmark_Binary/unmarshal-8       	 3000000	       554 ns/op	      88 B/op	       5 allocs/op
+// Benchmark_Binary/marshal-8         	 5000000	       314 ns/op	     112 B/op	       2 allocs/op
+// Benchmark_Binary/marshal-to-8      	10000000	       216 ns/op	      50 B/op	       0 allocs/op
+// Benchmark_Binary/unmarshal-8       	 3000000	       494 ns/op	      88 B/op	       5 allocs/op
 func Benchmark_Binary(b *testing.B) {
 	v := newBenchStruct()
 	enc, _ := Marshal(&v)
@@ -185,7 +186,7 @@ func TestBinaryEncodeStruct(t *testing.T) {
 
 func TestEncoderSizeOf(t *testing.T) {
 	var e Encoder
-	assert.Equal(t, 48, int(unsafe.Sizeof(e)))
+	assert.Equal(t, 56, int(unsafe.Sizeof(e)))
 }
 
 func TestMarshalWithCustomCodec(t *testing.T) {

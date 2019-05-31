@@ -35,7 +35,7 @@ func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err e
 	if l, err = d.ReadUint64(); err == nil && l > 0 {
 		if b, err = d.Slice(int(l)); err == nil {
 			out := (*reflect.SliceHeader)(unsafe.Pointer(rv.UnsafeAddr()))
-			out.Data = reflect.ValueOf(b).Pointer()
+			out.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b)).Data
 			out.Len = int(l) / c.sizeOfInt
 			out.Cap = int(l) / c.sizeOfInt
 		}
@@ -61,7 +61,7 @@ func (c *byteSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 
 	if l, err = d.ReadUvarint(); err == nil && l > 0 {
 		if b, err = d.Slice(int(l)); err == nil {
-			rv.Set(reflect.ValueOf(b))
+			rv.SetBytes(b)
 		}
 	}
 	return

@@ -26,6 +26,8 @@ func makeBytes(n int) (arr []byte) {
 	return
 }
 
+// BenchmarkString_Safe/marshal-8         	 5000000	       368 ns/op	     368 B/op	       3 allocs/op
+// BenchmarkString_Safe/unmarshal-8       	 5000000	       227 ns/op	     160 B/op	       2 allocs/op
 func BenchmarkString_Safe(b *testing.B) {
 	v := testString
 	enc, _ := binary.Marshal(&v)
@@ -48,6 +50,8 @@ func BenchmarkString_Safe(b *testing.B) {
 	})
 }
 
+// BenchmarkDictionary_Unsafe/marshal-8         	 3000000	       398 ns/op	     112 B/op	       2 allocs/op
+// BenchmarkDictionary_Unsafe/unmarshal-8       	20000000	       102 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkDictionary_Unsafe(b *testing.B) {
 	v := Dictionary{
 		"name":   "Roman",
@@ -75,6 +79,8 @@ func BenchmarkDictionary_Unsafe(b *testing.B) {
 	})
 }
 
+// BenchmarkString_Unsafe/marshal-8         	 5000000	       348 ns/op	     368 B/op	       3 allocs/op
+// BenchmarkString_Unsafe/unmarshal-8       	20000000	       108 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkString_Unsafe(b *testing.B) {
 	v := String(testString)
 	enc, _ := binary.Marshal(&v)
@@ -104,6 +110,8 @@ func asBytes(v []uint64) (o []byte) {
 	return
 }
 
+// BenchmarkBytes_Safe/marshal-8         	 1000000	      1616 ns/op	   10354 B/op	       3 allocs/op
+// BenchmarkBytes_Safe/unmarshal-8       	 1000000	      1547 ns/op	   10274 B/op	       2 allocs/op
 func BenchmarkBytes_Safe(b *testing.B) {
 	v := makeBytes(defaultSize)
 	enc, _ := binary.Marshal(&v)
@@ -126,6 +134,8 @@ func BenchmarkBytes_Safe(b *testing.B) {
 	})
 }
 
+// BenchmarkBytes_Unsafe/marshal-8         	 1000000	      1676 ns/op	   10354 B/op	       3 allocs/op
+// BenchmarkBytes_Unsafe/unmarshal-8       	20000000	       116 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkBytes_Unsafe(b *testing.B) {
 	v := Bytes(makeBytes(defaultSize))
 	enc, _ := binary.Marshal(&v)
@@ -148,6 +158,8 @@ func BenchmarkBytes_Unsafe(b *testing.B) {
 	})
 }
 
+// BenchmarkUint64s_Safe/marshal-8         	   10000	    167612 ns/op	   78325 B/op	      11 allocs/op
+// BenchmarkUint64s_Safe/unmarshal-8       	    5000	    286769 ns/op	   81975 B/op	       2 allocs/op
 func BenchmarkUint64s_Safe(b *testing.B) {
 	v := makeUint64s(defaultSize)
 	enc, _ := binary.Marshal(&v)
@@ -170,6 +182,8 @@ func BenchmarkUint64s_Safe(b *testing.B) {
 	})
 }
 
+// BenchmarkUint64s_Unsafe/marshal-8         	  100000	     10711 ns/op	   82055 B/op	       3 allocs/op
+// BenchmarkUint64s_Unsafe/unmarshal-8       	20000000	       109 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkUint64s_Unsafe(b *testing.B) {
 	v := Uint64s(makeUint64s(defaultSize))
 	enc, _ := binary.Marshal(&v)
@@ -192,6 +206,8 @@ func BenchmarkUint64s_Unsafe(b *testing.B) {
 	})
 }
 
+// BenchmarkColumnar_Unsafe/marshal-8         	 1000000	      1712 ns/op	    1450 B/op	      10 allocs/op
+// BenchmarkColumnar_Unsafe/unmarshal-8       	 1000000	      1519 ns/op	    1056 B/op	      10 allocs/op
 func BenchmarkColumnar_Unsafe(b *testing.B) {
 	v := composite{}
 	v["a"] = column{
@@ -222,6 +238,42 @@ func BenchmarkColumnar_Unsafe(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		var out composite
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
+type message struct{
+	A Bytes
+	B Bytes
+	C Bytes
+	D Bytes
+}
+
+// BenchmarkStruct_Unsafe/marshal-8         	 3000000	       459 ns/op	     272 B/op	       3 allocs/op
+// BenchmarkStruct_Unsafe/unmarshal-8       	10000000	       221 ns/op	       0 B/op	       0 allocs/op
+func BenchmarkStruct_Unsafe(b *testing.B) {
+	v := message{
+		A: Bytes{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+		B: Bytes{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+		C: Bytes{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+		D: Bytes{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
+	}
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out message
 		for n := 0; n < b.N; n++ {
 			binary.Unmarshal(enc, &out)
 		}
