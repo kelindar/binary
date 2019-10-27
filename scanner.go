@@ -200,7 +200,9 @@ func scanStruct(t reflect.Type) (meta *scannedStruct) {
 	meta = new(scannedStruct)
 	for i := 0; i < l; i++ {
 		if t.Field(i).Name != "_" {
-			meta.fields = append(meta.fields, i)
+			if t.Field(i).Tag.Get("binary") != "-" {
+				meta.fields = append(meta.fields, i)
+			}
 		}
 	}
 	return
