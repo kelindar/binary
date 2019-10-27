@@ -97,9 +97,9 @@ func newComposite() composite {
 	return v
 }
 
-// Benchmark_Binary/marshal-8         	 5000000	       314 ns/op	     112 B/op	       2 allocs/op
-// Benchmark_Binary/marshal-to-8      	10000000	       216 ns/op	      50 B/op	       0 allocs/op
-// Benchmark_Binary/unmarshal-8       	 3000000	       494 ns/op	      88 B/op	       5 allocs/op
+// Benchmark_Binary/marshal-8         	 5286771	       226 ns/op	     112 B/op	       2 allocs/op
+// Benchmark_Binary/marshal-to-8      	 6467770	       167 ns/op	      33 B/op	       0 allocs/op
+// Benchmark_Binary/unmarshal-8       	 3350119	       355 ns/op	      88 B/op	       5 allocs/op
 func Benchmark_Binary(b *testing.B) {
 	v := newBenchStruct()
 	enc, _ := Marshal(&v)
@@ -112,12 +112,12 @@ func Benchmark_Binary(b *testing.B) {
 		}
 	})
 
-	encoder := NewEncoder(new(bytes.Buffer))
+	var buffer bytes.Buffer
 	b.Run("marshal-to", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			encoder.Encode(&v)
+			MarshalTo(&v, &buffer)
 		}
 	})
 

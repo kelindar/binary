@@ -22,15 +22,24 @@ var encoders = &sync.Pool{New: func() interface{} {
 // Marshal encodes the payload into binary format.
 func Marshal(v interface{}) (output []byte, err error) {
 	var buffer bytes.Buffer
+	buffer.Grow(64)
+
+	// Encode and set the buffer if successful
+	if err = MarshalTo(v, &buffer); err == nil {
+		output = buffer.Bytes()
+	}
+	return
+}
+
+// MarshalTo encodes the payload into a specific destination.
+func MarshalTo(v interface{}, dst io.Writer) (err error) {
 
 	// Get the encoder from the pool, reset it
 	e := encoders.Get().(*Encoder)
-	e.Reset(&buffer)
+	e.Reset(dst)
 
 	// Encode and set the buffer if successful
-	if err = e.Encode(v); err == nil {
-		output = buffer.Bytes()
-	}
+	err = e.Encode(v)
 
 	// Put the encoder back when we're finished
 	encoders.Put(e)
