@@ -123,6 +123,43 @@ func (c *boolSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 // -----------------------------------------------------------------------------
 
 // The codec to use for marshaling the properties
+type byteMapCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *byteMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
+	dict := rv.Interface().(ByteMap)
+	e.WriteUint16(uint16(len(dict)))
+	for k, v := range dict {
+		encodeString(e, k)
+		e.WriteUvarint(uint64(len(v)))
+		e.Write(v)
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
+	var size uint16
+	if size, err = d.ReadUint16(); err == nil {
+		dict := make(ByteMap)
+		rv.Set(reflect.ValueOf(dict))
+		for i := 0; i < int(size); i++ {
+			k, _ := decodeString(d)
+			var l uint64
+			var b []byte
+			if l, err = d.ReadUvarint(); err == nil && l > 0 {
+				if b, err = d.Slice(int(l)); err == nil {
+					dict[k] = b
+				}
+			}
+		}
+	}
+	return
+}
+
+// -----------------------------------------------------------------------------
+
+// The codec to use for marshaling the properties
 type dictionaryCodec struct{}
 
 // Encode encodes a value into the encoder.

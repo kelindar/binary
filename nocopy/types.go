@@ -191,3 +191,14 @@ type Dictionary map[string]string
 func (d *Dictionary) GetBinaryCodec() binary.Codec {
 	return new(dictionaryCodec)
 }
+
+// ------------------------------------------------------------------------------
+
+// ByteMap represents a map where keys are strings but the values are slices of
+// bytes. It is encoded in an unsafe, non portable mapper.
+type ByteMap map[string][]byte
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (d *ByteMap) GetBinaryCodec() binary.Codec {
+	return new(byteMapCodec)
+}

@@ -79,6 +79,35 @@ func BenchmarkDictionary_Unsafe(b *testing.B) {
 	})
 }
 
+// BenchmarkByteMap_Unsafe/marshal-8         	 4472432	       267 ns/op	     112 B/op	       2 allocs/op
+// BenchmarkByteMap_Unsafe/unmarshal-8       	20394808	        57.8 ns/op	       0 B/op	       0 allocs/op
+func BenchmarkByteMap_Unsafe(b *testing.B) {
+	v := ByteMap{
+		"name":   []byte("Roman"),
+		"race":   []byte("human"),
+		"status": []byte("happy"),
+	}
+
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out String
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
 // BenchmarkString_Unsafe/marshal-8         	 5000000	       348 ns/op	     368 B/op	       3 allocs/op
 // BenchmarkString_Unsafe/unmarshal-8       	20000000	       108 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkString_Unsafe(b *testing.B) {
@@ -244,7 +273,7 @@ func BenchmarkColumnar_Unsafe(b *testing.B) {
 	})
 }
 
-type message struct{
+type message struct {
 	A Bytes
 	B Bytes
 	C Bytes

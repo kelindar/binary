@@ -77,6 +77,23 @@ func Test_Dictionary(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
+func Test_ByteMap(t *testing.T) {
+	v := ByteMap{
+		"name":   []byte("Roman"),
+		"race":   []byte("human"),
+		"status": []byte("happy"),
+	}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o ByteMap
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
 func Test_String(t *testing.T) {
 	v := String("ABCD")
 
