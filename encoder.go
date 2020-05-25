@@ -183,3 +183,9 @@ func (e *Encoder) writeComplex64(v complex64) {
 func (e *Encoder) writeComplex128(v complex128) {
 	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
+
+// WriteString writes a string prefixed with a variable-size integer size.
+func (e *Encoder) WriteString(v string) {
+	e.WriteUvarint(uint64(len(v)))
+	e.Write(ToBytes(v))
+}

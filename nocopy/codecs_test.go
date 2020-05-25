@@ -50,8 +50,8 @@ func BenchmarkString_Safe(b *testing.B) {
 	})
 }
 
-// BenchmarkDictionary_Unsafe/marshal-8         	 3000000	       398 ns/op	     112 B/op	       2 allocs/op
-// BenchmarkDictionary_Unsafe/unmarshal-8       	20000000	       102 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkDictionary_Unsafe/marshal-8         	 4166210	       275 ns/op	     112 B/op	       2 allocs/op
+// BenchmarkDictionary_Unsafe/unmarshal-8       	20000932	        59.4 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkDictionary_Unsafe(b *testing.B) {
 	v := Dictionary{
 		"name":   "Roman",
@@ -79,13 +79,13 @@ func BenchmarkDictionary_Unsafe(b *testing.B) {
 	})
 }
 
-// BenchmarkByteMap_Unsafe/marshal-8         	 4472432	       267 ns/op	     112 B/op	       2 allocs/op
-// BenchmarkByteMap_Unsafe/unmarshal-8       	20394808	        57.8 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkByteMap_Unsafe/marshal-8         	 2240605	       539 ns/op	    1008 B/op	       4 allocs/op
+// BenchmarkByteMap_Unsafe/unmarshal-8       	19098699	        62.1 ns/op	       0 B/op	       0 allocs/op
 func BenchmarkByteMap_Unsafe(b *testing.B) {
 	v := ByteMap{
-		"name":   []byte("Roman"),
-		"race":   []byte("human"),
-		"status": []byte("happy"),
+		"name":   []byte(testString),
+		"race":   []byte(testString),
+		"status": []byte(testString),
 	}
 
 	enc, _ := binary.Marshal(&v)

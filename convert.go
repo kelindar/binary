@@ -9,11 +9,13 @@ import (
 	"unsafe"
 )
 
-func binaryToString(b *[]byte) string {
+// ToString converts byte slice to a string without allocating.
+func ToString(b *[]byte) string {
 	return *(*string)(unsafe.Pointer(b))
 }
 
-func stringToBinary(v string) (b []byte) {
+// ToBytes converts a string to a byte slice without allocating.
+func ToBytes(v string) (b []byte) {
 	strHeader := (*reflect.StringHeader)(unsafe.Pointer(&v))
 	byteHeader := (*reflect.SliceHeader)(unsafe.Pointer(&b))
 	byteHeader.Data = strHeader.Data

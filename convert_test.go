@@ -12,11 +12,11 @@ import (
 func TestConvert_String(t *testing.T) {
 	v := "hi there"
 
-	b := stringToBinary(v)
+	b := ToBytes(v)
 	assert.NotEmpty(t, b)
 	assert.Equal(t, v, string(b))
 
-	o := binaryToString(&b)
+	o := ToString(&b)
 	assert.NotEmpty(t, b)
 	assert.Equal(t, v, o)
 }

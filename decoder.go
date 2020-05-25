@@ -144,6 +144,15 @@ func (d *Decoder) ReadBool() (bool, error) {
 	return b == 1, err
 }
 
+// ReadString a string prefixed with a variable-size integer size.
+func (d *Decoder) ReadString() (out string, err error) {
+	var b []byte
+	if b, err = d.ReadSlice(); err == nil {
+		out = string(b)
+	}
+	return
+}
+
 // ReadComplex reads a complex64
 func (d *Decoder) readComplex64() (out complex64, err error) {
 	err = binary.Read(d.r, binary.LittleEndian, &out)
@@ -184,4 +193,14 @@ func (d *Decoder) Slice(n int) ([]byte, error) {
 	}
 
 	return buffer, nil
+}
+
+// ReadSlice reads a varint prefixed sub-slice without copying and returns the underlying
+// byte slice.
+func (d *Decoder) ReadSlice() (b []byte, err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err == nil {
+		b, err = d.Slice(int(l))
+	}
+	return
 }

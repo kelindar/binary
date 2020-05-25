@@ -75,7 +75,7 @@ type stringCodec struct{}
 func (c *stringCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) error {
 	v := rv.String()
 	e.WriteUvarint(uint64(len(v)))
-	e.Write(stringToBinary(v))
+	e.Write(binary.ToBytes(v))
 	return nil
 }
 
@@ -86,7 +86,7 @@ func (c *stringCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) 
 
 	if l, err = d.ReadUvarint(); err == nil {
 		if v, err = d.Slice(int(l)); err == nil {
-			rv.SetString(binaryToString(&v))
+			rv.SetString(binary.ToString(&v))
 		}
 	}
 	return
@@ -141,7 +141,7 @@ func (c *byteMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error)
 func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var size uint16
 	if size, err = d.ReadUint16(); err == nil {
-		dict := make(ByteMap)
+		dict := make(ByteMap, int(size))
 		rv.Set(reflect.ValueOf(dict))
 		for i := 0; i < int(size); i++ {
 			k, _ := decodeString(d)
@@ -191,7 +191,7 @@ func (c *dictionaryCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err err
 // encodeString writes a string to the encoder
 func encodeString(e *binary.Encoder, v string) {
 	e.WriteUvarint(uint64(len(v)))
-	e.Write(stringToBinary(v))
+	e.Write(binary.ToBytes(v))
 }
 
 // decodeString reads a string from the decoder
@@ -200,7 +200,7 @@ func decodeString(d *binary.Decoder) (v string, err error) {
 	var b []byte
 	if l, err = d.ReadUvarint(); err == nil {
 		if b, err = d.Slice(int(l)); err == nil {
-			v = binaryToString(&b)
+			v = binary.ToString(&b)
 		}
 	}
 	return

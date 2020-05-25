@@ -371,7 +371,7 @@ func (c *reflectMapCodec) writeKey(e *Encoder, key reflect.Value) (err error) {
 	case reflect.String:
 		str := key.String()
 		e.WriteUint16(uint16(len(str)))
-		e.Write(stringToBinary(str))
+		e.Write(ToBytes(str))
 	default:
 		err = c.key.EncodeTo(e, key)
 	}
@@ -439,21 +439,15 @@ type stringCodec struct{}
 
 // Encode encodes a value into the encoder.
 func (c *stringCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
-	str := rv.String()
-	e.WriteUvarint(uint64(len(str)))
-	e.Write(stringToBinary(str))
+	e.WriteString(rv.String())
 	return nil
 }
 
 // Decode decodes into a reflect value from the decoder.
 func (c *stringCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var l uint64
-	var b []byte
-
-	if l, err = d.ReadUvarint(); err == nil {
-		if b, err = d.Slice(int(l)); err == nil {
-			rv.SetString(string(b))
-		}
+	var s string
+	if s, err = d.ReadString(); err == nil {
+		rv.SetString(s)
 	}
 	return
 }

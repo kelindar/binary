@@ -9,18 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestConvert_String(t *testing.T) {
-	v := "hi there"
-
-	b := stringToBinary(v)
-	assert.NotEmpty(t, b)
-	assert.Equal(t, v, string(b))
-
-	o := binaryToString(&b)
-	assert.NotEmpty(t, b)
-	assert.Equal(t, v, o)
-}
-
 func TestConvert_Bools(t *testing.T) {
 	v := Bools{true, false, true, true, false, false}
 
