@@ -202,3 +202,14 @@ type ByteMap map[string][]byte
 func (d *ByteMap) GetBinaryCodec() binary.Codec {
 	return new(byteMapCodec)
 }
+
+// ------------------------------------------------------------------------------
+
+// HashMap represents a map where keys are uint64 but the values are slices of
+// bytes. It is encoded in an unsafe, non portable mapper.
+type HashMap map[uint64][]byte
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (d *HashMap) GetBinaryCodec() binary.Codec {
+	return new(hashMapCodec)
+}

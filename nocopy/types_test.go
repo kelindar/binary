@@ -94,6 +94,23 @@ func Test_ByteMap(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
+func Test_HashMap(t *testing.T) {
+	v := HashMap{
+		1: []byte("Roman"),
+		2: []byte("human"),
+		3: []byte("happy"),
+	}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o HashMap
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
 func Test_String(t *testing.T) {
 	v := String("ABCD")
 

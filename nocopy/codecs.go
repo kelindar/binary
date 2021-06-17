@@ -159,6 +159,43 @@ func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 
 // -----------------------------------------------------------------------------
 
+// The codec to use for marshaling the pre-hashed hash maps
+type hashMapCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *hashMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
+	dict := rv.Interface().(HashMap)
+	e.WriteUint32(uint32(len(dict)))
+	for k, v := range dict {
+		e.WriteUint64(k)
+		e.WriteUint32(uint32(len(v)))
+		e.Write(v)
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *hashMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
+	var size uint32
+	if size, err = d.ReadUint32(); err == nil {
+		dict := make(HashMap, int(size))
+		rv.Set(reflect.ValueOf(dict))
+		for i := 0; i < int(size); i++ {
+			k, _ := d.ReadUint64()
+			var l uint32
+			var b []byte
+			if l, err = d.ReadUint32(); err == nil && l > 0 {
+				if b, err = d.Slice(int(l)); err == nil {
+					dict[k] = b
+				}
+			}
+		}
+	}
+	return
+}
+
+// -----------------------------------------------------------------------------
+
 // The codec to use for marshaling the properties
 type dictionaryCodec struct{}
 

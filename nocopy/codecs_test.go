@@ -50,8 +50,8 @@ func BenchmarkString_Safe(b *testing.B) {
 	})
 }
 
-// BenchmarkDictionary_Unsafe/marshal-8         	 4166210	       275 ns/op	     112 B/op	       2 allocs/op
-// BenchmarkDictionary_Unsafe/unmarshal-8       	20000932	        59.4 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkDictionary_Unsafe/marshal-8         	 4282570	       283.8 ns/op	     112 B/op	       2 allocs/op
+// BenchmarkDictionary_Unsafe/unmarshal-8       	 3678001	       329.1 ns/op	     336 B/op	       2 allocs/op
 func BenchmarkDictionary_Unsafe(b *testing.B) {
 	v := Dictionary{
 		"name":   "Roman",
@@ -72,15 +72,15 @@ func BenchmarkDictionary_Unsafe(b *testing.B) {
 	b.Run("unmarshal", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		var out String
+		var out Dictionary
 		for n := 0; n < b.N; n++ {
 			binary.Unmarshal(enc, &out)
 		}
 	})
 }
 
-// BenchmarkByteMap_Unsafe/marshal-8         	 2240605	       539 ns/op	    1008 B/op	       4 allocs/op
-// BenchmarkByteMap_Unsafe/unmarshal-8       	19098699	        62.1 ns/op	       0 B/op	       0 allocs/op
+// BenchmarkByteMap_Unsafe/marshal-8         	 2362354	       501.8 ns/op	    1008 B/op	       4 allocs/op
+// BenchmarkByteMap_Unsafe/unmarshal-8       	 3651502	       355.3 ns/op	     400 B/op	       2 allocs/op
 func BenchmarkByteMap_Unsafe(b *testing.B) {
 	v := ByteMap{
 		"name":   []byte(testString),
@@ -101,7 +101,36 @@ func BenchmarkByteMap_Unsafe(b *testing.B) {
 	b.Run("unmarshal", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		var out String
+		var out ByteMap
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(enc, &out)
+		}
+	})
+}
+
+// BenchmarkHashMap_Unsafe/marshal-8         	 2542200	       478.5 ns/op	    1008 B/op	       4 allocs/op
+// BenchmarkHashMap_Unsafe/unmarshal-8       	 4157452	       291.8 ns/op	     336 B/op	       2 allocs/op
+func BenchmarkHashMap_Unsafe(b *testing.B) {
+	v := HashMap{
+		1: []byte(testString),
+		2: []byte(testString),
+		3: []byte(testString),
+	}
+
+	enc, _ := binary.Marshal(&v)
+
+	b.Run("marshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&v)
+		}
+	})
+
+	b.Run("unmarshal", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out HashMap
 		for n := 0; n < b.N; n++ {
 			binary.Unmarshal(enc, &out)
 		}
