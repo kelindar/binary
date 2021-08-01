@@ -92,3 +92,13 @@ func (s Int64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 func (s *Int64s) GetBinaryCodec() binary.Codec {
 	return IntsCodecAs(reflect.TypeOf(Int64s{}), 8)
 }
+
+// ------------------------------------------------------------------------------
+
+// Timestamps represents the slice of sorted timestamps
+type Timestamps []uint64
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (ts *Timestamps) GetBinaryCodec() binary.Codec {
+	return timestampCodec{}
+}

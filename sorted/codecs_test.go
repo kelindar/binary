@@ -5,35 +5,90 @@ package sorted
 
 import (
 	"testing"
+	"time"
 
 	"github.com/kelindar/binary"
 	"github.com/stretchr/testify/assert"
 )
 
-// 1000000	      1133 ns/op	     336 B/op	       9 allocs/op
-// 1000000	      1110 ns/op	     312 B/op	       7 allocs/op
-// 1000000	      1000 ns/op	     176 B/op	       3 allocs/op
-
+/*
+cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+BenchmarkSortedSlice/encode-int-12         	 1875320	       614.1 ns/op	     216 B/op	       4 allocs/op
+BenchmarkSortedSlice/decode-int-12         	  544180	      2187 ns/op	    1080 B/op	      36 allocs/op
+BenchmarkSortedSlice/encode-uint-12        	 2051314	       581.3 ns/op	     216 B/op	       4 allocs/op
+BenchmarkSortedSlice/decode-uint-12        	  571098	      2170 ns/op	    1080 B/op	      36 allocs/op
+*/
 func BenchmarkSortedSlice(b *testing.B) {
-	v := Int64s{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6}
-	enc, _ := binary.Marshal(&v)
+	ints := Int32s{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6}
+	intsEnc, _ := binary.Marshal(&ints)
 
-	b.Run("marshal", func(b *testing.B) {
+	b.Run("encode-int", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
-			binary.Marshal(&v)
+			binary.Marshal(&ints)
 		}
 	})
 
-	b.Run("unmarshal", func(b *testing.B) {
+	b.Run("decode-int", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		var out Int64s
 		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(intsEnc, &out)
+		}
+	})
+
+	uints := Uint32s{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6}
+	uintsEnc, _ := binary.Marshal(&uints)
+
+	b.Run("encode-uint", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&uints)
+		}
+	})
+
+	b.Run("decode-uint", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out Uint64s
+		for n := 0; n < b.N; n++ {
+			binary.Unmarshal(uintsEnc, &out)
+		}
+	})
+}
+
+/*
+cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+BenchmarkTimes/encode-12         	  238062	      4586 ns/op	    3337 B/op	       5 allocs/op
+BenchmarkTimes/decode-12         	  202978	      6026 ns/op	    8219 B/op	       2 allocs/op
+*/
+func BenchmarkTimes(b *testing.B) {
+	var times Timestamps
+	for i := uint64(0); i < 1000; i++ {
+		times = append(times, uint64(time.Now().Unix())+i)
+	}
+	enc, _ := binary.Marshal(&times)
+
+	b.Run("encode", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			binary.Marshal(&times)
+		}
+	})
+
+	b.Run("decode", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		var out Timestamps
+		for n := 0; n < b.N; n++ {
 			binary.Unmarshal(enc, &out)
 		}
 	})
+
 }
 
 func TestPayload(t *testing.T) {
