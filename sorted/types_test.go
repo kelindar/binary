@@ -87,3 +87,16 @@ func Test_Int64(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, o)
 }
+
+func Test_Timestamps(t *testing.T) {
+	v := Timestamps{4, 5, 6, 1, 2, 3}
+
+	b, err := binary.Marshal(&v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o Timestamps
+	err = binary.Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
