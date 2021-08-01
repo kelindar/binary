@@ -100,5 +100,5 @@ type Timestamps []uint64
 
 // GetBinaryCodec retrieves a custom binary codec.
 func (ts *Timestamps) GetBinaryCodec() binary.Codec {
-	return timestampCodec{}
+	return TimestampCodec(true)
 }
