@@ -135,21 +135,12 @@ func (c *uintSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 
 // ------------------------------------------------------------------------------
 
-// TimestampCodec returns a timestamp codec.
-func TimestampCodec(sort bool) binary.Codec {
-	return &timestampCodec{
-		sort: sort,
-	}
-}
-
-type timestampCodec struct {
-	sort bool // Whether codec needs to sort or not
-}
+type timestampCodec struct{}
 
 // EncodeTo encodes a value into the encoder.
 func (c timestampCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	data := rv.Interface().(Timestamps)
-	if c.sort {
+	if !sort.IsSorted(Uint64s(data)) {
 		sort.Sort(Uint64s(data))
 	}
 

@@ -62,12 +62,12 @@ func BenchmarkSortedSlice(b *testing.B) {
 
 /*
 cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
-BenchmarkTimes/encode-12         	  238062	      4586 ns/op	    3337 B/op	       5 allocs/op
-BenchmarkTimes/decode-12         	  202978	      6026 ns/op	    8219 B/op	       2 allocs/op
+BenchmarkTimes/encode-12         	   17698	     76181 ns/op	   30893 B/op	       6 allocs/op
+BenchmarkTimes/decode-12         	   22126	     54699 ns/op	   81977 B/op	       2 allocs/op
 */
 func BenchmarkTimes(b *testing.B) {
 	var times Timestamps
-	for i := uint64(0); i < 1000; i++ {
+	for i := uint64(0); i < 10000; i++ {
 		times = append(times, uint64(time.Now().Unix())+i)
 	}
 	enc, _ := binary.Marshal(&times)
