@@ -102,3 +102,42 @@ type Timestamps []uint64
 func (ts *Timestamps) GetBinaryCodec() binary.Codec {
 	return timestampCodec{}
 }
+
+// ------------------------------------------------------------------------------
+
+// TimeSeries represents a compressed time-series data. The implementation is based
+// on Gorilla paper (https://www.vldb.org/pvldb/vol8/p1816-teller.pdf), but instead
+// of bit-weaving it is byte-aligned. If you are using this, consider using snappy
+// compression on the output, as it will give a significantly better compression than
+// simply marshaling the time-series using this binary encoder.
+type TimeSeries struct {
+	Time []uint64  // Sorted timestamps compressed using delta-encoding
+	Data []float64 // Corresponding float-64 values
+}
+
+// Append appends a new value into the time series.
+func (ts *TimeSeries) Append(time uint64, value float64) {
+	ts.Time = append(ts.Time, time)
+	ts.Data = append(ts.Data, value)
+}
+
+// Len returns the length of the time-series
+func (ts *TimeSeries) Len() int {
+	return len(ts.Time)
+}
+
+// Less compares two elements of the time series
+func (ts *TimeSeries) Less(i, j int) bool {
+	return ts.Time[i] < ts.Time[j]
+}
+
+// Swap swaps two elements of the time series
+func (ts *TimeSeries) Swap(i, j int) {
+	ts.Time[i], ts.Time[j] = ts.Time[j], ts.Time[i]
+	ts.Data[i], ts.Data[j] = ts.Data[j], ts.Data[i]
+}
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (ts *TimeSeries) GetBinaryCodec() binary.Codec {
+	return tszCodec{}
+}
