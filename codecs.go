@@ -196,6 +196,25 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	return
 }
 
+type reflectPointerCodec struct {
+	elemCodec Codec
+}
+
+func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	err = c.elemCodec.EncodeTo(e, rv.Elem())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	if rv.IsNil() {
+		rv.Set(reflect.New(rv.Type().Elem()))
+	}
+	return c.elemCodec.DecodeTo(d, rv.Elem())
+}
+
 // ------------------------------------------------------------------------------
 
 type reflectStructCodec []fieldCodec
@@ -218,7 +237,12 @@ func (c *reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) 
 // Decode decodes into a reflect value from the decoder.
 func (c *reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	for _, i := range *c {
-		if v := rv.Field(i.Index); v.CanSet() {
+		v := rv.Field(i.Index)
+		if v.Kind() == reflect.Ptr {
+			if err = i.Codec.DecodeTo(d, v); err != nil {
+				return
+			}
+		} else if v.CanSet() {
 			if err = i.Codec.DecodeTo(d, reflect.Indirect(v)); err != nil {
 				return
 			}
