@@ -201,6 +201,11 @@ type reflectPointerCodec struct {
 }
 
 func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	if rv.IsNil() {
+		e.writeBool(true)
+		return
+	}
+	e.writeBool(false)
 	err = c.elemCodec.EncodeTo(e, rv.Elem())
 	if err != nil {
 		return err
@@ -209,6 +214,13 @@ func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error)
 }
 
 func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	isNil, err := d.ReadBool()
+	if err != nil {
+		return err
+	}
+	if isNil {
+		return
+	}
 	if rv.IsNil() {
 		rv.Set(reflect.New(rv.Type().Elem()))
 	}
