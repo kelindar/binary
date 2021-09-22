@@ -62,6 +62,15 @@ func scanType(t reflect.Type) (Codec, error) {
 	}
 
 	switch t.Kind() {
+	case reflect.Ptr:
+		elemCodec, err := scanType(t.Elem())
+		if err != nil {
+			return nil, err
+		}
+
+		return &reflectPointerCodec{
+			elemCodec: elemCodec,
+		}, nil
 	case reflect.Array:
 		elemCodec, err := scanType(t.Elem())
 		if err != nil {
