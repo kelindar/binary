@@ -555,3 +555,38 @@ func Test_Float64(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, o)
 }
+
+func TestSliceOfPtrs(t *testing.T) {
+	type A struct {
+		V int64
+	}
+
+	v := []*A{{1}, nil, {2}}
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o []*A
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}
+
+func TestSliceOfTimePtrs(t *testing.T) {
+	type A struct {
+		T0 *time.Time
+		T1 *time.Time
+		T2 time.Time
+	}
+
+	x := time.Unix(1637686933, 0)
+	v := []*A{{&x, nil, x}}
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.NotNil(t, b)
+
+	var o []*A
+	err = Unmarshal(b, &o)
+	assert.NoError(t, err)
+	assert.Equal(t, v, o)
+}

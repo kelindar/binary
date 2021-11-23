@@ -87,6 +87,52 @@ func (c *reflectSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 // ------------------------------------------------------------------------------
 
+type reflectSliceOfPtrCodec struct {
+	elemCodec Codec        // The codec of the slice's elements
+	elemType  reflect.Type // The type of the element
+}
+
+// Encode encodes a value into the encoder.
+func (c *reflectSliceOfPtrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	e.WriteUvarint(uint64(l))
+	for i := 0; i < l; i++ {
+		v := rv.Index(i)
+		e.writeBool(v.IsNil())
+		if !v.IsNil() {
+			if err = c.elemCodec.EncodeTo(e, reflect.Indirect(v)); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	var isNil bool
+	if l, err = binary.ReadUvarint(d.r); err == nil && l > 0 {
+		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
+		for i := 0; i < int(l); i++ {
+			if isNil, err = d.ReadBool(); !isNil {
+				if err != nil {
+					return
+				}
+
+				ptr := rv.Index(i)
+				ptr.Set(reflect.New(c.elemType))
+				if err = c.elemCodec.DecodeTo(d, reflect.Indirect(ptr)); err != nil {
+					return
+				}
+			}
+		}
+	}
+	return
+}
+
+// ------------------------------------------------------------------------------
+
 type byteSliceCodec struct{}
 
 // Encode encodes a value into the encoder.
@@ -196,15 +242,19 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 type reflectPointerCodec struct {
 	elemCodec Codec
 }
 
+// Encode encodes a value into the encoder.
 func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	if rv.IsNil() {
 		e.writeBool(true)
 		return
 	}
+
 	e.writeBool(false)
 	err = c.elemCodec.EncodeTo(e, rv.Elem())
 	if err != nil {
@@ -213,6 +263,7 @@ func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error)
 	return nil
 }
 
+// Decode decodes into a reflect value from the decoder.
 func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	isNil, err := d.ReadBool()
 	if err != nil {
@@ -221,9 +272,11 @@ func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error)
 	if isNil {
 		return
 	}
+
 	if rv.IsNil() {
 		rv.Set(reflect.New(rv.Type().Elem()))
 	}
+
 	return c.elemCodec.DecodeTo(d, rv.Elem())
 }
 
@@ -280,6 +333,14 @@ func (c *customCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 		return errors.New("MarshalBinary not found on " + rv.Type().String())
 	}
 
+	// Special-case for pointers
+	if rv.Kind() == reflect.Ptr {
+		e.writeBool(rv.IsNil())
+		if rv.IsNil() {
+			return nil
+		}
+	}
+
 	ret := m.Call([]reflect.Value{})
 	if !ret[1].IsNil() {
 		err = ret[1].Interface().(error)
@@ -296,6 +357,19 @@ func (c *customCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 // Decode decodes into a reflect value from the decoder.
 func (c *customCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	m := c.GetUnmarshalBinary(rv)
+
+	// Special case for pointers
+	if rv.Kind() == reflect.Ptr {
+		isNil, err := d.ReadBool()
+		if err != nil {
+			return err
+		}
+		if isNil {
+			return nil
+		}
+
+		rv.Set(reflect.New(rv.Type().Elem()))
+	}
 
 	var l uint64
 	if l, err = binary.ReadUvarint(d.r); err == nil {
