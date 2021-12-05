@@ -5,7 +5,6 @@ package binary
 
 import (
 	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"testing"
 	"unsafe"
@@ -70,15 +69,6 @@ func Test_Full(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
-//type benchStruct = composite
-
-type benchStruct = msg
-
-func newBenchStruct() benchStruct {
-	//return newComposite()
-	return testMsg
-}
-
 func newComposite() composite {
 	v := composite{}
 	v["a"] = column{
@@ -97,11 +87,14 @@ func newComposite() composite {
 	return v
 }
 
-// Benchmark_Binary/marshal-8         	 5286771	       226 ns/op	     112 B/op	       2 allocs/op
-// Benchmark_Binary/marshal-to-8      	 6467770	       167 ns/op	      33 B/op	       0 allocs/op
-// Benchmark_Binary/unmarshal-8       	 3350119	       355 ns/op	      88 B/op	       5 allocs/op
-func Benchmark_Binary(b *testing.B) {
-	v := newBenchStruct()
+/*
+cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+Benchmark_Binary/marshal-12         	 5074890	       227.4 ns/op	     112 B/op	       2 allocs/op
+Benchmark_Binary/marshal-to-12      	 7011523	       162.3 ns/op	      30 B/op	       0 allocs/op
+Benchmark_Binary/unmarshal-12       	 4224048	       283.0 ns/op	      72 B/op	       5 allocs/op
+*/
+func BenchmarkBinary(b *testing.B) {
+	v := testMsg
 	enc, _ := Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -117,6 +110,7 @@ func Benchmark_Binary(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
+			buffer.Reset()
 			MarshalTo(&v, &buffer)
 		}
 	})
@@ -124,40 +118,15 @@ func Benchmark_Binary(b *testing.B) {
 	b.Run("unmarshal", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		var out benchStruct
+		var out msg
 		for n := 0; n < b.N; n++ {
 			Unmarshal(enc, &out)
 		}
 	})
 }
 
-func Benchmark_Gob(b *testing.B) {
-	v := newBenchStruct()
-
-	buffer := new(bytes.Buffer)
-	codec := gob.NewEncoder(buffer)
-	codec.Encode(&v)
-
-	b.Run("marshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			gob.NewEncoder(new(bytes.Buffer)).Encode(&v)
-		}
-	})
-
-	b.Run("unmarshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		var out benchStruct
-		for n := 0; n < b.N; n++ {
-			gob.NewDecoder(buffer).Decode(&out)
-		}
-	})
-}
-
-func Benchmark_JSON(b *testing.B) {
-	v := newBenchStruct()
+func BenchmarkJSON(b *testing.B) {
+	v := testMsg
 	enc, _ := json.Marshal(&v)
 
 	b.Run("marshal", func(b *testing.B) {
@@ -171,7 +140,7 @@ func Benchmark_JSON(b *testing.B) {
 	b.Run("unmarshal", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
-		var out benchStruct
+		var out msg
 		for n := 0; n < b.N; n++ {
 			json.Unmarshal(enc, &out)
 		}

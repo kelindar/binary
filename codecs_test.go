@@ -590,3 +590,13 @@ func TestSliceOfTimePtrs(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, v, o)
 }
+
+func TestEncodeBigStruct(t *testing.T) {
+	input := newBigStruct()
+	b, err := Marshal(input)
+	assert.NoError(t, err)
+
+	var output bigStruct
+	assert.NoError(t, Unmarshal(b, &output))
+	assert.Equal(t, input, &output)
+}

@@ -131,16 +131,17 @@ func scanType(t reflect.Type) (Codec, error) {
 
 	case reflect.Struct:
 		s := scanStruct(t)
-		var v reflectStructCodec
+		v := make(reflectStructCodec, len(s.fields))
 		for _, i := range s.fields {
 			field := t.Field(i)
-			if c, err := scanType(field.Type); err == nil {
-				v = append(v, fieldCodec{
-					Index: i,
-					Codec: c,
-				})
-			} else {
+			codec, err := scanType(field.Type)
+			if err != nil {
 				return nil, err
+			}
+
+			v[i] = fieldCodec{
+				Index: i,
+				Codec: codec,
 			}
 		}
 
