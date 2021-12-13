@@ -6,6 +6,7 @@ package binary
 import (
 	"bytes"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,8 +29,6 @@ func TestScanner(t *testing.T) {
 	e := NewEncoder(&b)
 	err = codec.EncodeTo(e, reflect.Indirect(reflect.ValueOf(s0v)))
 	assert.NoError(t, err)
-
-	//e.Flush()
 	assert.Equal(t, s0b, b.Bytes())
 }
 
@@ -39,4 +38,23 @@ func TestScanner_Custom(t *testing.T) {
 	codec, err := scan(rt)
 	assert.NoError(t, err)
 	assert.NotNil(t, codec)
+}
+
+func TestScannerComposed(t *testing.T) {
+	codec, err := scan(reflect.TypeOf(Partition{}))
+	assert.NoError(t, err)
+	assert.NotNil(t, codec)
+}
+
+type Partition struct {
+	Strings
+	Filters map[uint32][]uint64
+}
+
+type Strings struct {
+	lock sync.Mutex `binary:"-"`
+	Key  string
+	Fill []uint64
+	Hash []uint32
+	Data map[uint64][]byte
 }
