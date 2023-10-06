@@ -24,23 +24,19 @@ func (tszCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 		sort.Sort(&data)
 	}
 
-	buffer := make([]byte, 0, 4*len(data.Time))
-
 	// Write the timestamps into the buffer
-	prev := uint64(0)
-	for _, curr := range data.Time {
-		diff := curr - prev
-		prev = curr
-		buffer = appendDelta(buffer, diff)
-	}
+	buffer := appendDelta(
+		make([]byte, 0, 4*len(data.Time)),
+		data.Time,
+	)
 
 	// Write the values into the buffer
-	prev = uint64(0)
+	prev := uint64(0)
 	for _, v := range data.Data {
 		curr := uint64(bits.Reverse32(math.Float32bits(float32(v))))
 		diff := curr ^ prev
 		prev = curr
-		buffer = appendDelta(buffer, diff)
+		buffer = bin.AppendUvarint(buffer, diff)
 	}
 
 	// Writhe the size and the buffer
@@ -77,25 +73,14 @@ func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 		Data: make([]float64, count),
 	}
 
-	// Current offset
-	offset := 0
-
-	// Read encoded timestamps
-	prev := uint64(0)
-	for i := 0; i < int(count); i++ {
-		diff, n := bin.Uvarint(buffer[offset:])
-		prev = prev + diff
-		result.Time[i] = prev
-		offset += n
-	}
-
+	offset := readDelta(result.Time, buffer[0:])
 	d.ReadUvarint()
 
 	// Read encoded values
-	prev = uint64(0)
+	prev := uint64(0)
 	for i := 0; i < int(count); i++ {
 		diff, n := bin.Uvarint(buffer[offset:])
-		prev = prev ^ diff
+		prev ^= diff
 		result.Data[i] = float64(math.Float32frombits(bits.Reverse32(uint32(prev))))
 		offset += n
 	}
@@ -104,12 +89,35 @@ func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 	return nil
 }
 
-// appendDelta appends a delta into the buffer
-func appendDelta(buffer []byte, delta uint64) []byte {
-	for delta >= 0x80 {
-		buffer = append(buffer, byte(delta)|0x80)
-		delta >>= 7
+// ------------------------------------------------------------------------------
+
+// appendDelta appends a delta array into the buffer
+func appendDelta(dst []byte, data []uint64) []byte {
+	prev := uint64(0)
+	for i := 0; i < len(data); i++ {
+		diff := data[i] - prev
+		prev = data[i]
+
+		// Inlined AppendUvarint(dst, diff)
+		for diff >= 0x80 {
+			dst = append(dst, byte(diff)|0x80)
+			diff >>= 7
+		}
+		dst = append(dst, byte(diff))
 	}
 
-	return append(buffer, byte(delta))
+	return dst
+}
+
+// readDelta reads a delta array from the buffer
+func readDelta(dst []uint64, src []byte) (read int) {
+	prev := uint64(0)
+	for i := 0; i < len(dst); i++ {
+		diff, n := bin.Uvarint(src[read:])
+		prev = prev + diff
+		dst[i] = prev
+		read += n
+	}
+
+	return read
 }

@@ -1,6 +1,3 @@
-// Copyright (c) Roman Atachiants and contributors. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for details.
-
 package sorted
 
 import (
@@ -11,10 +8,10 @@ import (
 )
 
 /*
-BenchmarkTimeSeries/encode-10         	   10000	    103506 ns/op	  123136 B/op	       6 allocs/op
-BenchmarkTimeSeries/decode-10         	   13610	     85692 ns/op	  661022 B/op	      22 allocs/op
+BenchmarkTimeCounters/encode-10         	   10000	    105358 ns/op	  123137 B/op	       6 allocs/op
+BenchmarkTimeCounters/decode-10         	   14527	     83441 ns/op	  661026 B/op	      22 allocs/op
 */
-func BenchmarkTimeSeries(b *testing.B) {
+func BenchmarkTimeCounters(b *testing.B) {
 	series := makeTimeCounters(20000)
 	enc, _ := binary.Marshal(&series)
 
@@ -36,25 +33,25 @@ func BenchmarkTimeSeries(b *testing.B) {
 	})
 }
 
-func TestTimeSeries(t *testing.T) {
+func TestTimeCounters(t *testing.T) {
 
 	// Marshal
-	ts := makeTimeSeries(100)
+	ts := makeTimeCounters(100)
 	b, err := binary.Marshal(ts)
 	assert.NoError(t, err)
-	assert.Equal(t, 341, len(b)) // Consider compressing using snappy after
+	assert.Equal(t, 207, len(b)) // Consider compressing using snappy after
 
 	// Unmarshal
-	var out TimeSeries
+	var out TimeCounters
 	assert.NoError(t, binary.Unmarshal(b, &out))
 	assert.Equal(t, 100, len(out.Data))
 	assert.Equal(t, *ts, out)
 }
 
-func makeTimeSeries(count int) *TimeSeries {
-	var ts TimeSeries
+func makeTimeCounters(count int) *TimeCounters {
+	var ts TimeCounters
 	for i := count - 1; i >= 0; i-- {
-		ts.Append(uint64(1500000000+i), float64(i))
+		ts.Append(uint64(1500000000+i), uint64(i))
 	}
 	return &ts
 }

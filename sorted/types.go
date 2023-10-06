@@ -141,3 +141,39 @@ func (ts *TimeSeries) Swap(i, j int) {
 func (ts *TimeSeries) GetBinaryCodec() binary.Codec {
 	return tszCodec{}
 }
+
+// ------------------------------------------------------------------------------
+
+// TimeCounters represents a compressed time-series data where the value
+// is itself an unsigned integer. This is particularly useful for counters.
+type TimeCounters struct {
+	Time []uint64 // Sorted timestamps compressed using delta-encoding
+	Data []uint64 // Corresponding uint64 values
+}
+
+// Append appends a new value into the time series.
+func (ts *TimeCounters) Append(time, value uint64) {
+	ts.Time = append(ts.Time, time)
+	ts.Data = append(ts.Data, value)
+}
+
+// Len returns the length of the time-series
+func (ts *TimeCounters) Len() int {
+	return len(ts.Time)
+}
+
+// Less compares two elements of the time series
+func (ts *TimeCounters) Less(i, j int) bool {
+	return ts.Time[i] < ts.Time[j]
+}
+
+// Swap swaps two elements of the time series
+func (ts *TimeCounters) Swap(i, j int) {
+	ts.Time[i], ts.Time[j] = ts.Time[j], ts.Time[i]
+	ts.Data[i], ts.Data[j] = ts.Data[j], ts.Data[i]
+}
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (ts *TimeCounters) GetBinaryCodec() binary.Codec {
+	return tczCodec{}
+}
