@@ -1,8 +1,14 @@
+//go:build js
 // +build js
+
 // Copyright (c) Roman Atachiants and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for details.
 
 package binary
+
+func ToBytes(v string) (b []byte) {
+	return []byte(v)
+}
 
 func binaryToString(buf *[]byte) string {
 	return string(*buf)
