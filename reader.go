@@ -185,7 +185,7 @@ func (r *streamReader) Slice(n int) (buffer []byte, err error) {
 		buffer = make([]byte, n, n)
 	}
 
-	_, err = r.Read(buffer)
+	_, err = io.ReadFull(r, buffer)
 	return
 }
 
