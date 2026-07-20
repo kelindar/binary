@@ -239,6 +239,26 @@ func TestDecodeEmptySlices(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestDecodePopulatedMap(t *testing.T) {
+	want := map[string][]byte{
+		"first":  []byte("one"),
+		"second": []byte("two"),
+	}
+	encoded, err := Marshal(want)
+	assert.NoError(t, err)
+
+	got := map[string][]byte{"stale": []byte("value")}
+	for range 2 {
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, want, got)
+	}
+
+	encoded, err = Marshal(map[string][]byte{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Empty(t, got)
+}
+
 func testMarshalComplexStruct(t *testing.T) {
 	b, err := Marshal(s1v)
 	assert.NoError(t, err)

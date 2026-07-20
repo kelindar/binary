@@ -469,7 +469,11 @@ func (c *reflectMapCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if l, err = d.ReadUvarint(); err == nil {
 		t := rv.Type()
 		vt := t.Elem()
-		rv.Set(reflect.MakeMap(t))
+		if rv.IsNil() {
+			rv.Set(reflect.MakeMapWithSize(t, int(l)))
+		} else {
+			rv.Clear()
+		}
 		for i := 0; i < int(l); i++ {
 
 			var kv reflect.Value
