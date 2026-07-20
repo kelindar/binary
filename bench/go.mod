@@ -1,6 +1,6 @@
 module github.com/kelindar/binary/bench
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/kelindar/bench v0.3.2

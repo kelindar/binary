@@ -1,29 +1,59 @@
 name: Test
-on: [push, pull_request]
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
-  GITHUB_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
   GO111MODULE: "on"
+  COVER_FAIL_UNDER: "75"
+
 jobs:
   test:
     name: Test with Coverage
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: ["1.19", "1.20"]
     steps:
-      - name: Set up Go ${{ matrix.go }}
-        uses: actions/setup-go@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          go-version: ${{ matrix.go }}
-      - name: Check out code
-        uses: actions/checkout@v3
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Install dependencies
+        run: go mod download
+
+      - name: Run unit tests with coverage
         run: |
-          go mod download
-      - name: Run Unit Tests
-        run: |
-          go test -race -covermode atomic -coverprofile=profile.cov ./...
-      - name: Upload Coverage
+          mkdir -p coverage
+          go test -race -count=1 -covermode=atomic -coverprofile=coverage/go \
+            $(go list ./... | grep -v -E '/bench$')
+
+      - name: Upload coverage to Coveralls
         uses: shogo82148/actions-goveralls@v1
         with:
-          path-to-profile: profile.cov
+          path-to-profile: coverage/go
+        env:
+          GITHUB_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+
+      - name: Convert Go coverage to lcov
+        run: |
+          go install github.com/jandelgado/gcov2lcov@v1.1.1
+          gcov2lcov -infile=coverage/go -outfile=coverage/go.lcov
+
+      - name: Enforce new-code coverage
+        if: github.event_name == 'pull_request'
+        uses: Affanmir/diff-cover-action@v2
+        with:
+          coverage-files: coverage/go.lcov
+          compare-branch: origin/${{ github.base_ref }}
+          fail-under: ${{ env.COVER_FAIL_UNDER }}

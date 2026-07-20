@@ -78,7 +78,7 @@ func newComposite() composite {
 	return v
 }
 
-func TestBinaryEncodeStruct(t *testing.T) {
+func TestEncodeStruct(t *testing.T) {
 	b, err := Marshal(s0v)
 	assert.NoError(t, err)
 	assert.Equal(t, s0b, b)
@@ -89,7 +89,7 @@ func TestEncoderSizeOf(t *testing.T) {
 	assert.Equal(t, 56, int(unsafe.Sizeof(e)))
 }
 
-func TestMarshalWithCustomCodec(t *testing.T) {
+func TestCustomCodec(t *testing.T) {
 	v := testCustom("custom codec")
 
 	b, err := Marshal(v)

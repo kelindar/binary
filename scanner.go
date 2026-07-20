@@ -56,149 +56,123 @@ func scanType(t reflect.Type) (Codec, error) {
 	if custom, ok := scanCustomCodec(t); ok {
 		return custom, nil
 	}
-
 	if custom, ok := scanBinaryMarshaler(t); ok {
 		return custom, nil
 	}
 
 	switch t.Kind() {
 	case reflect.Ptr:
-		elemCodec, err := scanType(t.Elem())
-		if err != nil {
-			return nil, err
-		}
-
-		return &reflectPointerCodec{
-			elemCodec: elemCodec,
-		}, nil
-
+		return scanPointer(t)
 	case reflect.Array:
+		return scanArray(t)
+	case reflect.Slice:
+		return scanSlice(t)
+	case reflect.Struct:
+		return scanStructCodec(t)
+	case reflect.Map:
+		return scanMap(t)
+	default:
+		if c := scanPrimitive(t.Kind()); c != nil {
+			return c, nil
+		}
+		return nil, errors.New("binary: unsupported type " + t.String())
+	}
+}
+
+func scanPointer(t reflect.Type) (Codec, error) {
+	elemCodec, err := scanType(t.Elem())
+	if err != nil {
+		return nil, err
+	}
+	return &reflectPointerCodec{elemCodec: elemCodec}, nil
+}
+
+func scanArray(t reflect.Type) (Codec, error) {
+	elemCodec, err := scanType(t.Elem())
+	if err != nil {
+		return nil, err
+	}
+	return &reflectArrayCodec{elemCodec: elemCodec}, nil
+}
+
+func scanSlice(t reflect.Type) (Codec, error) {
+	switch t.Elem().Kind() {
+	case reflect.Uint8:
+		return new(byteSliceCodec), nil
+	case reflect.Bool:
+		return new(boolSliceCodec), nil
+	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return new(varuintSliceCodec), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return new(varintSliceCodec), nil
+	case reflect.Ptr:
+		elemCodec, err := scanType(t.Elem().Elem())
+		if err != nil {
+			return nil, err
+		}
+		return &reflectSliceOfPtrCodec{
+			elemType:  t.Elem().Elem(),
+			elemCodec: elemCodec,
+		}, nil
+	default:
 		elemCodec, err := scanType(t.Elem())
 		if err != nil {
 			return nil, err
 		}
-
-		return &reflectArrayCodec{
-			elemCodec: elemCodec,
-		}, nil
-
-	case reflect.Slice:
-
-		// Fast-paths for simple numeric slices and string slices
-		switch t.Elem().Kind() {
-		case reflect.Uint8:
-			return new(byteSliceCodec), nil
-		case reflect.Bool:
-			return new(boolSliceCodec), nil
-		case reflect.Uint:
-			fallthrough
-		case reflect.Uint16:
-			fallthrough
-		case reflect.Uint32:
-			fallthrough
-		case reflect.Uint64:
-			return new(varuintSliceCodec), nil
-		case reflect.Int:
-			fallthrough
-		case reflect.Int8:
-			fallthrough
-		case reflect.Int16:
-			fallthrough
-		case reflect.Int32:
-			fallthrough
-		case reflect.Int64:
-			return new(varintSliceCodec), nil
-		case reflect.Ptr:
-			elemCodec, err := scanType(t.Elem().Elem())
-			if err != nil {
-				return nil, err
-			}
-
-			return &reflectSliceOfPtrCodec{
-				elemType:  t.Elem().Elem(),
-				elemCodec: elemCodec,
-			}, nil
-		default:
-			elemCodec, err := scanType(t.Elem())
-			if err != nil {
-				return nil, err
-			}
-
-			return &reflectSliceCodec{
-				elemCodec: elemCodec,
-			}, nil
-		}
-
-	case reflect.Struct:
-		s := scanStruct(t)
-		v := make(reflectStructCodec, 0, len(s.fields))
-		for _, i := range s.fields {
-			field := t.Field(i)
-			codec, err := scanType(field.Type)
-			if err != nil {
-				return nil, err
-			}
-
-			// Append since unexported fields are skipped
-			v = append(v, fieldCodec{
-				Index: i,
-				Codec: codec,
-			})
-		}
-
-		return &v, nil
-
-	case reflect.Map:
-		key, err := scanType(t.Key())
-		if err != nil {
-			return nil, err
-		}
-
-		val, err := scanType(t.Elem())
-		if err != nil {
-			return nil, err
-		}
-
-		return &reflectMapCodec{
-			key: key,
-			val: val,
-		}, nil
-
-	case reflect.String:
-		return new(stringCodec), nil
-	case reflect.Bool:
-		return new(boolCodec), nil
-	case reflect.Int8:
-		fallthrough
-	case reflect.Int16:
-		fallthrough
-	case reflect.Int32:
-		fallthrough
-	case reflect.Int:
-		fallthrough
-	case reflect.Int64:
-		return new(varintCodec), nil
-	case reflect.Uint8:
-		fallthrough
-	case reflect.Uint16:
-		fallthrough
-	case reflect.Uint32:
-		fallthrough
-	case reflect.Uint:
-		fallthrough
-	case reflect.Uint64:
-		return new(varuintCodec), nil
-	case reflect.Complex64:
-		return new(complex64Codec), nil
-	case reflect.Complex128:
-		return new(complex128Codec), nil
-	case reflect.Float32:
-		return new(float32Codec), nil
-	case reflect.Float64:
-		return new(float64Codec), nil
+		return &reflectSliceCodec{elemCodec: elemCodec}, nil
 	}
+}
 
-	return nil, errors.New("binary: unsupported type " + t.String())
+func scanStructCodec(t reflect.Type) (Codec, error) {
+	s := scanStruct(t)
+	v := make(reflectStructCodec, 0, len(s.fields))
+	for _, i := range s.fields {
+		field := t.Field(i)
+		codec, err := scanType(field.Type)
+		if err != nil {
+			return nil, err
+		}
+		v = append(v, fieldCodec{
+			Index: i,
+			Codec: codec,
+		})
+	}
+	return &v, nil
+}
+
+func scanMap(t reflect.Type) (Codec, error) {
+	key, err := scanType(t.Key())
+	if err != nil {
+		return nil, err
+	}
+	val, err := scanType(t.Elem())
+	if err != nil {
+		return nil, err
+	}
+	return &reflectMapCodec{key: key, val: val}, nil
+}
+
+func scanPrimitive(kind reflect.Kind) Codec {
+	switch kind {
+	case reflect.String:
+		return new(stringCodec)
+	case reflect.Bool:
+		return new(boolCodec)
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int, reflect.Int64:
+		return new(varintCodec)
+	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint, reflect.Uint64:
+		return new(varuintCodec)
+	case reflect.Complex64:
+		return new(complex64Codec)
+	case reflect.Complex128:
+		return new(complex128Codec)
+	case reflect.Float32:
+		return new(float32Codec)
+	case reflect.Float64:
+		return new(float64Codec)
+	default:
+		return nil
+	}
 }
 
 type scannedStruct struct {

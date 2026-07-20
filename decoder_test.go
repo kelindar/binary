@@ -10,14 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBinaryDecodeStruct(t *testing.T) {
+func TestDecodeStruct(t *testing.T) {
 	s := &s0{}
 	err := Unmarshal(s0b, s)
 	assert.NoError(t, err)
 	assert.Equal(t, s0v, s)
 }
 
-func TestBinaryDecodeToValueErrors(t *testing.T) {
+func TestDecodeErrors(t *testing.T) {
 	b := []byte{1, 0, 0, 0}
 	var v uint32
 	err := Unmarshal(b, v)
