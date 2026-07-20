@@ -237,17 +237,15 @@ func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err e
 
 	if l, err = d.ReadUint64(); err == nil && l > 0 {
 		if b, err = d.Slice(int(l)); err == nil {
-			count := int(l) / c.sizeOfInt
-			hdr := struct {
+			// Mutate the slice header in place so decoding stays zero-copy.
+			hdr := (*struct {
 				Data unsafe.Pointer
 				Len  int
 				Cap  int
-			}{
-				Data: unsafe.Pointer(unsafe.SliceData(b)),
-				Len:  count,
-				Cap:  count,
-			}
-			rv.Set(reflect.NewAt(c.sliceType, unsafe.Pointer(&hdr)).Elem())
+			})(unsafe.Pointer(rv.UnsafeAddr()))
+			hdr.Data = unsafe.Pointer(unsafe.SliceData(b))
+			hdr.Len = int(l) / c.sizeOfInt
+			hdr.Cap = int(l) / c.sizeOfInt
 		}
 	}
 	return
