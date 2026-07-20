@@ -313,7 +313,8 @@ type reflectStructCodec []fieldCodec
 const (
 	fieldOffsetMask = uint64(1)<<56 - 1
 	fieldKindShift  = 56
-	fieldKindMask   = uint64(0x3f) << fieldKindShift
+	fieldKindMask   = uint64(0x1f) << fieldKindShift
+	fieldDirect     = uint64(1) << 61
 	fieldIncluded   = uint64(1) << 62
 	fieldWritable   = uint64(1) << 63
 )
@@ -333,7 +334,7 @@ func (f *fieldCodec) kind() reflect.Kind {
 
 // Encode encodes a value into the encoder.
 func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	if rv.CanAddr() {
+	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 {
 		base := unsafe.Pointer(rv.UnsafeAddr())
 		for i := range c {
 			field := &c[i]
@@ -397,11 +398,11 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 
 // Decode decodes into a reflect value from the decoder.
 func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	if rv.CanAddr() {
+	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 {
 		base := unsafe.Pointer(rv.UnsafeAddr())
 		for i := range c {
 			field := &c[i]
-			if field.Field&(fieldIncluded|fieldWritable) != fieldIncluded|fieldWritable {
+			if field.Field&fieldWritable == 0 {
 				continue
 			}
 			pointer := unsafe.Add(base, field.offset())
@@ -529,7 +530,7 @@ func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 	for i := range c {
 		field := &c[i]
-		if field.Field&(fieldIncluded|fieldWritable) == fieldIncluded|fieldWritable {
+		if field.Field&fieldWritable != 0 {
 			err = field.Codec.DecodeTo(d, rv.Field(i))
 		}
 		if err != nil {

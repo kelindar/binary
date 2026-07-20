@@ -110,6 +110,7 @@ func scanSlice(t reflect.Type) (Codec, error) {
 
 func scanStructCodec(t reflect.Type) (Codec, error) {
 	v := make(reflectStructCodec, t.NumField())
+	hasDirect := false
 	for i := range t.NumField() {
 		field := t.Field(i)
 		if field.Name == "_" || field.Tag.Get("binary") == "-" {
@@ -124,6 +125,7 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		case *stringCodec, *boolCodec, *varintCodec, *varuintCodec,
 			*complex64Codec, *complex128Codec, *float32Codec, *float64Codec:
 			kind = field.Type.Kind()
+			hasDirect = true
 		}
 		packed := uint64(field.Offset) |
 			uint64(kind)<<fieldKindShift |
@@ -135,6 +137,9 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			Field: packed,
 			Codec: codec,
 		}
+	}
+	if hasDirect {
+		v[0].Field |= fieldDirect
 	}
 	return &v, nil
 }
