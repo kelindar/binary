@@ -52,6 +52,7 @@ func runBinary(b *bench.B) {
 	runBinaryBytes(b)
 	runBinaryUint64s(b)
 	runBinaryReuse(b)
+	runBinaryTrace(b)
 }
 
 func runBinaryMsg(b *bench.B) {
@@ -179,6 +180,42 @@ func runBinaryReuse(b *bench.B) {
 		reader.Reset(enc)
 		_ = decoder.Decode(&out)
 	})
+}
+
+type tracePayload struct {
+	Spans []traceSpan
+}
+
+type traceSpan struct {
+	Ordinal    uint32
+	At         int64
+	Scope      string
+	Node       string
+	NodeType   string
+	Phase      string
+	Invocation uint32
+	Target     string
+}
+
+func runBinaryTrace(b *bench.B) {
+	value := tracePayload{Spans: make([]traceSpan, 128)}
+	for i := range value.Spans {
+		value.Spans[i] = traceSpan{
+			Ordinal:    uint32(i),
+			At:         int64(i * 1000),
+			Scope:      "workflow",
+			Node:       "node",
+			NodeType:   "activity",
+			Phase:      "completed",
+			Invocation: uint32(i % 4),
+			Target:     "worker",
+		}
+	}
+	enc, _ := binary.Marshal(&value)
+	var out tracePayload
+
+	b.Run("binary/trace-enc", func(int) { binary.Marshal(&value) })
+	b.Run("binary/trace-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 // ------------------------------------------------------------------------------

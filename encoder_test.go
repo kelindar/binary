@@ -36,7 +36,20 @@ type columnFloat32 struct {
 	Floats []float32
 }
 
-func Test_Full(t *testing.T) {
+func TestEncoder(t *testing.T) {
+	tests := map[string]func(*testing.T){
+		"composite":         testEncoderComposite,
+		"struct bytes":      testEncoderStructBytes,
+		"sizeof":            testEncoderSizeOf,
+		"alternating types": testEncoderAlternatingTypes,
+		"custom codec":      testEncoderCustomCodec,
+	}
+	for name, fn := range tests {
+		t.Run(name, fn)
+	}
+}
+
+func testEncoderComposite(t *testing.T) {
 	v := composite{}
 	v["a"] = column{
 		Varchar: columnVarchar{
@@ -62,37 +75,19 @@ func Test_Full(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
-func newComposite() composite {
-	v := composite{}
-	v["a"] = column{
-		Varchar: columnVarchar{
-			Nulls: []bool{false, false, false, true, false, false, false, false, true, false, false, false, false, true, false},
-			Sizes: []uint32{2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 0, 2},
-			Bytes: []byte{10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10},
-		},
-	}
-	v["b"] = column{
-		Float64: columnFloat64{
-			Nulls:  []bool{false, false, false, true, false},
-			Floats: []float64{1.1, 2.2, 3.3, 0, 4.4},
-		},
-	}
-	return v
-}
-
-func TestEncodeStruct(t *testing.T) {
+func testEncoderStructBytes(t *testing.T) {
 	b, err := Marshal(s0v)
 	assert.NoError(t, err)
 	assert.Equal(t, s0b, b)
 }
 
-func TestEncoderSizeOf(t *testing.T) {
+func testEncoderSizeOf(t *testing.T) {
 	var e Encoder
 	assert.Equal(t, 80, int(unsafe.Sizeof(e)))
 	assert.Equal(t, 24, int(unsafe.Sizeof(fieldCodec{})))
 }
 
-func TestEncoderDecoderAlternatingTypes(t *testing.T) {
+func testEncoderAlternatingTypes(t *testing.T) {
 	type first struct{ Value uint64 }
 	type second struct{ Value string }
 
@@ -116,7 +111,7 @@ func TestEncoderDecoderAlternatingTypes(t *testing.T) {
 	}
 }
 
-func TestCustomCodec(t *testing.T) {
+func testEncoderCustomCodec(t *testing.T) {
 	v := testCustom("custom codec")
 
 	b, err := Marshal(v)
