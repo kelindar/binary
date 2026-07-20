@@ -10,119 +10,81 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Bools(t *testing.T) {
-	v := Bools{true, false, true, true, false, false}
+func TestTypes(t *testing.T) {
+	tests := map[string]struct {
+		value interface{}
+		out   interface{}
+	}{
+		"bools": {
+			value: Bools{true, false, true, true, false, false},
+			out:   new(Bools),
+		},
+		"uint16": {
+			value: Uint16s{4, 5, 6, 1, 2, 3},
+			out:   new(Uint16s),
+		},
+		"int16": {
+			value: Int16s{4, 5, 6, 1, 2, 3},
+			out:   new(Int16s),
+		},
+		"uint32": {
+			value: Uint32s{4, 5, 6, 1, 2, 3},
+			out:   new(Uint32s),
+		},
+		"int32": {
+			value: Int32s{4, 5, 6, 1, 2, 3},
+			out:   new(Int32s),
+		},
+		"uint64": {
+			value: Uint64s{4, 5, 6, 1, 2, 3},
+			out:   new(Uint64s),
+		},
+		"int64": {
+			value: Int64s{4, 5, 6, 1, 2, 3},
+			out:   new(Int64s),
+		},
+		"float32": {
+			value: Float32s{4.5, 5.01, 6.61, 1.12, 2.1, 3},
+			out:   new(Float32s),
+		},
+		"float64": {
+			value: Float64s{4.5, 5.01, 6.61, 1.12, 2.1, 3},
+			out:   new(Float64s),
+		},
+	}
 
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Bools
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			b, err := binary.Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.NotNil(t, b)
+			assert.NoError(t, binary.Unmarshal(b, tc.out))
+			assert.Equal(t, tc.value, deref(tc.out))
+		})
+	}
 }
 
-func Test_Uint16(t *testing.T) {
-	v := Uint16s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Uint16s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Int16(t *testing.T) {
-	v := Int16s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Int16s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Uint32(t *testing.T) {
-	v := Uint32s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Uint32s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Int32(t *testing.T) {
-	v := Int32s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Int32s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Uint64(t *testing.T) {
-	v := Uint64s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Uint64s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Int64(t *testing.T) {
-	v := Int64s{4, 5, 6, 1, 2, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Int64s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Float32(t *testing.T) {
-	v := Float32s{4.5, 5.01, 6.61, 1.12, 2.1, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Float32s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Float64(t *testing.T) {
-	v := Float64s{4.5, 5.01, 6.61, 1.12, 2.1, 3}
-
-	b, err := binary.Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o Float64s
-	err = binary.Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
+func deref(v interface{}) interface{} {
+	switch x := v.(type) {
+	case *Bools:
+		return *x
+	case *Uint16s:
+		return *x
+	case *Int16s:
+		return *x
+	case *Uint32s:
+		return *x
+	case *Int32s:
+		return *x
+	case *Uint64s:
+		return *x
+	case *Int64s:
+		return *x
+	case *Float32s:
+		return *x
+	case *Float64s:
+		return *x
+	default:
+		return v
+	}
 }

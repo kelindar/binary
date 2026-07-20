@@ -14,14 +14,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Message represents a message to be flushed
-type msg struct {
-	Name      string
-	Timestamp int64
-	Payload   []byte
-	Ssid      []uint32
-}
-
 type s0 struct {
 	A string
 	B string
@@ -33,26 +25,6 @@ var (
 	s0b = []byte{0x1, 0x41, 0x1, 0x42, 0x2}
 )
 
-func TestBinaryTime(t *testing.T) {
-	input := []time.Time{
-		time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
-	}
-
-	output := []byte{0x1, 0xf, 0x1, 0x0, 0x0, 0x0, 0xe, 0xc8, 0x75, 0x9a, 0xa5, 0x0, 0x0, 0x0, 0x6, 0xff, 0xff}
-
-	b, err := Marshal(&input)
-	assert.NoError(t, err)
-	assert.Equal(t, output, b)
-
-	var v []time.Time
-	err = Unmarshal(b, &v)
-
-	assert.NoError(t, err)
-	assert.Equal(t, input, v)
-	assert.Equal(t, 1, len(v))
-}
-
-// Message represents a message to be flushed
 type simpleStruct struct {
 	Name      string
 	Timestamp time.Time
@@ -62,64 +34,6 @@ type simpleStruct struct {
 
 type sliceStruct struct {
 	Payload []byte
-}
-
-func TestBinaryEncode_EOF(t *testing.T) {
-	v := &sliceStruct{
-		Payload: nil,
-	}
-	output := []byte{0x0}
-
-	b, err := Marshal(v)
-	assert.NoError(t, err)
-	assert.Equal(t, output, b)
-
-	s := &sliceStruct{}
-	err = Unmarshal(b, s)
-	assert.NoError(t, err)
-	assert.Equal(t, v, s)
-}
-
-func TestBinaryEncodeSimpleStruct(t *testing.T) {
-	v := &simpleStruct{
-		Name:      "Roman",
-		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
-		Payload:   []byte("hi"),
-		Ssid:      []uint32{1, 2, 3},
-	}
-	output := []byte{0x5, 0x52, 0x6f, 0x6d, 0x61, 0x6e, 0xf, 0x1, 0x0, 0x0, 0x0, 0xe, 0xc8, 0x75, 0x9a, 0xa5, 0x0, 0x0, 0x0, 0x6, 0xff, 0xff, 0x2, 0x68, 0x69, 0x3, 0x1, 0x2, 0x3}
-
-	b, err := Marshal(v)
-	assert.NoError(t, err)
-	assert.Equal(t, output, b)
-
-	s := &simpleStruct{}
-	err = Unmarshal(b, s)
-	assert.NoError(t, err)
-	assert.Equal(t, v, s)
-}
-
-func TestBinarySimpleStructSlice(t *testing.T) {
-	input := []simpleStruct{{
-		Name:      "Roman",
-		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
-		Payload:   []byte("hi"),
-		Ssid:      []uint32{1, 2, 3},
-	}, {
-		Name:      "Roman",
-		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
-		Payload:   []byte("hi"),
-		Ssid:      []uint32{1, 2, 3},
-	}}
-
-	b, err := Marshal(&input)
-
-	var v []simpleStruct
-	err = Unmarshal(b, &v)
-
-	assert.NoError(t, err)
-	assert.Equal(t, input, v)
-	assert.Equal(t, 2, len(v))
 }
 
 type s1 struct {
@@ -150,17 +64,6 @@ var (
 		0x3, 0x0, 0x6b, 0x65, 0x79, 0x5, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x2, 0x5, 0x42, 0x6f, 0x62, 0x62, 0x79, 0x6, 0x52, 0x6f, 0x62, 0x65, 0x72, 0x74}
 )
 
-func TestBinaryEncodeComplex(t *testing.T) {
-	b, err := Marshal(s1v)
-	assert.NoError(t, err)
-	assert.Equal(t, svb, b)
-
-	s := &s1{}
-	err = Unmarshal(b, s)
-	assert.NoError(t, err)
-	assert.Equal(t, s1v, s)
-}
-
 type s2 struct {
 	b []byte
 }
@@ -177,14 +80,121 @@ func (s *s2) MarshalBinary() (data []byte, err error) {
 	return s.b, nil
 }
 
-func TestBinaryMarshalUnMarshaler(t *testing.T) {
+func TestMarshal(t *testing.T) {
+	tests := map[string]func(*testing.T){
+		"time slice":         testMarshalTimeSlice,
+		"nil slice EOF":      testMarshalNilSliceEOF,
+		"simple struct":      testMarshalSimpleStruct,
+		"simple struct slice": testMarshalSimpleStructSlice,
+		"complex struct":     testMarshalComplexStruct,
+		"binary marshaler":   testMarshalBinaryMarshaler,
+		"type alias":         testMarshalTypeAlias,
+		"non-pointer value":  testMarshalNonPointer,
+		"big struct":         testMarshalBigStruct,
+	}
+	for name, fn := range tests {
+		t.Run(name, func(t *testing.T) {
+			fn(t)
+		})
+	}
+}
+
+func testMarshalTimeSlice(t *testing.T) {
+	input := []time.Time{
+		time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
+	}
+
+	output := []byte{0x1, 0xf, 0x1, 0x0, 0x0, 0x0, 0xe, 0xc8, 0x75, 0x9a, 0xa5, 0x0, 0x0, 0x0, 0x6, 0xff, 0xff}
+
+	b, err := Marshal(&input)
+	assert.NoError(t, err)
+	assert.Equal(t, output, b)
+
+	var v []time.Time
+	err = Unmarshal(b, &v)
+
+	assert.NoError(t, err)
+	assert.Equal(t, input, v)
+	assert.Equal(t, 1, len(v))
+}
+
+func testMarshalNilSliceEOF(t *testing.T) {
+	v := &sliceStruct{
+		Payload: nil,
+	}
+	output := []byte{0x0}
+
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.Equal(t, output, b)
+
+	s := &sliceStruct{}
+	err = Unmarshal(b, s)
+	assert.NoError(t, err)
+	assert.Equal(t, v, s)
+}
+
+func testMarshalSimpleStruct(t *testing.T) {
+	v := &simpleStruct{
+		Name:      "Roman",
+		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
+		Payload:   []byte("hi"),
+		Ssid:      []uint32{1, 2, 3},
+	}
+	output := []byte{0x5, 0x52, 0x6f, 0x6d, 0x61, 0x6e, 0xf, 0x1, 0x0, 0x0, 0x0, 0xe, 0xc8, 0x75, 0x9a, 0xa5, 0x0, 0x0, 0x0, 0x6, 0xff, 0xff, 0x2, 0x68, 0x69, 0x3, 0x1, 0x2, 0x3}
+
+	b, err := Marshal(v)
+	assert.NoError(t, err)
+	assert.Equal(t, output, b)
+
+	s := &simpleStruct{}
+	err = Unmarshal(b, s)
+	assert.NoError(t, err)
+	assert.Equal(t, v, s)
+}
+
+func testMarshalSimpleStructSlice(t *testing.T) {
+	input := []simpleStruct{{
+		Name:      "Roman",
+		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
+		Payload:   []byte("hi"),
+		Ssid:      []uint32{1, 2, 3},
+	}, {
+		Name:      "Roman",
+		Timestamp: time.Date(2013, 1, 2, 3, 4, 5, 6, time.UTC),
+		Payload:   []byte("hi"),
+		Ssid:      []uint32{1, 2, 3},
+	}}
+
+	b, err := Marshal(&input)
+
+	var v []simpleStruct
+	err = Unmarshal(b, &v)
+
+	assert.NoError(t, err)
+	assert.Equal(t, input, v)
+	assert.Equal(t, 2, len(v))
+}
+
+func testMarshalComplexStruct(t *testing.T) {
+	b, err := Marshal(s1v)
+	assert.NoError(t, err)
+	assert.Equal(t, svb, b)
+
+	s := &s1{}
+	err = Unmarshal(b, s)
+	assert.NoError(t, err)
+	assert.Equal(t, s1v, s)
+}
+
+func testMarshalBinaryMarshaler(t *testing.T) {
 	s2v := &s2{[]byte{0x13}}
 	b, err := Marshal(s2v)
 	assert.NoError(t, err)
 	assert.Equal(t, []byte{0x1, 0x13}, b)
 }
 
-func TestMarshalUnMarshalTypeAliases(t *testing.T) {
+func testMarshalTypeAlias(t *testing.T) {
 	type Foo int64
 	f := Foo(32)
 	b, err := Marshal(f)
@@ -192,7 +202,49 @@ func TestMarshalUnMarshalTypeAliases(t *testing.T) {
 	assert.Equal(t, []byte{0x40}, b)
 }
 
-func TestStructWithStruct(t *testing.T) {
+func testMarshalNonPointer(t *testing.T) {
+	type S struct {
+		A int
+	}
+	s := S{A: 1}
+	data, err := Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var res S
+	if err := Unmarshal(data, &res); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(res, s) {
+		t.Fatalf("expect %v got %v", s, res)
+	}
+}
+
+func testMarshalBigStruct(t *testing.T) {
+	input := newBigStruct()
+	b, err := Marshal(input)
+	assert.NoError(t, err)
+
+	var output bigStruct
+	assert.NoError(t, Unmarshal(b, &output))
+	assert.Equal(t, input, &output)
+}
+
+func TestStruct(t *testing.T) {
+	tests := map[string]func(*testing.T){
+		"nested fields":   testStructNestedFields,
+		"embedded struct": testStructEmbedded,
+		"array of struct": testStructArray,
+		"slice of struct": testStructSlice,
+	}
+	for name, fn := range tests {
+		t.Run(name, func(t *testing.T) {
+			fn(t)
+		})
+	}
+}
+
+func testStructNestedFields(t *testing.T) {
 	type T1 struct {
 		ID    uint64
 		Name  string
@@ -223,10 +275,9 @@ func TestStructWithStruct(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
-
 }
 
-func TestStructWithEmbeddedStruct(t *testing.T) {
+func testStructEmbedded(t *testing.T) {
 	type T1 struct {
 		ID    uint64
 		Name  string
@@ -257,10 +308,9 @@ func TestStructWithEmbeddedStruct(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
-
 }
 
-func TestArrayOfStructWithStruct(t *testing.T) {
+func testStructArray(t *testing.T) {
 	type T1 struct {
 		ID    uint64
 		Name  string
@@ -293,10 +343,9 @@ func TestArrayOfStructWithStruct(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
-
 }
 
-func TestSliceOfStructWithStruct(t *testing.T) {
+func testStructSlice(t *testing.T) {
 	type T1 struct {
 		ID    uint64
 		Name  string
@@ -329,10 +378,24 @@ func TestSliceOfStructWithStruct(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
-
 }
 
-func TestBasicTypePointers(t *testing.T) {
+func TestPointer(t *testing.T) {
+	tests := map[string]func(*testing.T){
+		"basic types":           testPointerBasicTypes,
+		"pointer of pointer":    testPointerOfPointer,
+		"struct pointer field":  testPointerStructField,
+		"slice of pointers":     testPointerSlice,
+		"slice of time pointers": testPointerTimeSlice,
+	}
+	for name, fn := range tests {
+		t.Run(name, func(t *testing.T) {
+			fn(t)
+		})
+	}
+}
+
+func testPointerBasicTypes(t *testing.T) {
 	type BT struct {
 		B    *bool
 		S    *string
@@ -441,7 +504,7 @@ func TestBasicTypePointers(t *testing.T) {
 	}
 }
 
-func TestPointerOfPointer(t *testing.T) {
+func testPointerOfPointer(t *testing.T) {
 	type S struct {
 		V **int
 	}
@@ -477,7 +540,7 @@ func TestPointerOfPointer(t *testing.T) {
 	}
 }
 
-func TestStructPointer(t *testing.T) {
+func testPointerStructField(t *testing.T) {
 	type T struct {
 		V int
 	}
@@ -512,51 +575,7 @@ func TestStructPointer(t *testing.T) {
 	}
 }
 
-func TestMarshalNonPointer(t *testing.T) {
-	type S struct {
-		A int
-	}
-	s := S{A: 1}
-	data, err := Marshal(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var res S
-	if err := Unmarshal(data, &res); err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(res, s) {
-		t.Fatalf("expect %v got %v", s, res)
-	}
-}
-
-func Test_Float32(t *testing.T) {
-	v := float32(1.15)
-
-	b, err := Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o float32
-	err = Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func Test_Float64(t *testing.T) {
-	v := float64(1.15)
-
-	b, err := Marshal(&v)
-	assert.NoError(t, err)
-	assert.NotNil(t, b)
-
-	var o float64
-	err = Unmarshal(b, &o)
-	assert.NoError(t, err)
-	assert.Equal(t, v, o)
-}
-
-func TestSliceOfPtrs(t *testing.T) {
+func testPointerSlice(t *testing.T) {
 	type A struct {
 		V int64
 	}
@@ -572,7 +591,7 @@ func TestSliceOfPtrs(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
-func TestSliceOfTimePtrs(t *testing.T) {
+func testPointerTimeSlice(t *testing.T) {
 	type A struct {
 		T0 *time.Time
 		T1 *time.Time
@@ -591,12 +610,46 @@ func TestSliceOfTimePtrs(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
-func TestEncodeBigStruct(t *testing.T) {
-	input := newBigStruct()
-	b, err := Marshal(input)
-	assert.NoError(t, err)
+func TestFloat(t *testing.T) {
+	tests := map[string]struct {
+		marshal func() (interface{}, []byte, error)
+		unmarshal func([]byte) (interface{}, error)
+		want interface{}
+	}{
+		"float32": {
+			marshal: func() (interface{}, []byte, error) {
+				v := float32(1.15)
+				b, err := Marshal(&v)
+				return v, b, err
+			},
+			unmarshal: func(b []byte) (interface{}, error) {
+				var o float32
+				err := Unmarshal(b, &o)
+				return o, err
+			},
+		},
+		"float64": {
+			marshal: func() (interface{}, []byte, error) {
+				v := float64(1.15)
+				b, err := Marshal(&v)
+				return v, b, err
+			},
+			unmarshal: func(b []byte) (interface{}, error) {
+				var o float64
+				err := Unmarshal(b, &o)
+				return o, err
+			},
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			want, b, err := tc.marshal()
+			assert.NoError(t, err)
+			assert.NotNil(t, b)
 
-	var output bigStruct
-	assert.NoError(t, Unmarshal(b, &output))
-	assert.Equal(t, input, &output)
+			got, err := tc.unmarshal(b)
+			assert.NoError(t, err)
+			assert.Equal(t, want, got)
+		})
+	}
 }
