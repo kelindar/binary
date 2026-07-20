@@ -176,6 +176,69 @@ func testMarshalSimpleStructSlice(t *testing.T) {
 	assert.Equal(t, 2, len(v))
 }
 
+func TestSliceWireFormat(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  []byte
+	}{
+		{"ints", []int64{-2, -1, 0, 1, 2}, []byte{5, 3, 1, 0, 2, 4}},
+		{"uints", []uint64{0, 1, 127, 128}, []byte{4, 0, 1, 127, 128, 1}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestDecodePopulatedSlice(t *testing.T) {
+	type item struct {
+		Bytes []byte
+		Uints []uint64
+	}
+
+	want := []item{
+		{Bytes: []byte("first"), Uints: []uint64{1, 2, 3}},
+		{Bytes: []byte("second"), Uints: []uint64{4, 5, 6}},
+	}
+	encoded, err := Marshal(want)
+	assert.NoError(t, err)
+
+	got := []item{
+		{Bytes: make([]byte, 1, 32), Uints: make([]uint64, 1, 32)},
+		{Bytes: make([]byte, 1, 32), Uints: make([]uint64, 1, 32)},
+	}
+	for range 2 {
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, want, got)
+	}
+}
+
+func TestDecodeEmptySlices(t *testing.T) {
+	type item struct {
+		Bytes []byte
+		Uints []uint64
+	}
+
+	got := []item{{Bytes: []byte{1}, Uints: []uint64{1}}}
+	encoded, err := Marshal([]item{{}})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	if assert.Len(t, got, 1) {
+		assert.Empty(t, got[0].Bytes)
+		assert.Empty(t, got[0].Uints)
+	}
+
+	encoded, err = Marshal([]item{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Empty(t, got)
+}
+
 func testMarshalComplexStruct(t *testing.T) {
 	b, err := Marshal(s1v)
 	assert.NoError(t, err)

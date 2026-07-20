@@ -5,11 +5,14 @@ package sorted
 
 import (
 	bin "encoding/binary"
+	"errors"
 	"reflect"
 	"sort"
 
 	"github.com/kelindar/binary"
 )
+
+var errInvalidVarint = errors.New("sorted: invalid varint")
 
 // IntsCodecAs returns an int slice codec with the specified precision and type.
 func IntsCodecAs(sliceType reflect.Type, sizeOfInt int) binary.Codec {
@@ -49,23 +52,31 @@ func (c *intSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error
 	var l uint64
 	var b []byte
 
-	if l, err = d.ReadUvarint(); err == nil && l > 0 {
+	if l, err = d.ReadUvarint(); err == nil {
+		if l == 0 {
+			rv.SetLen(0)
+			return nil
+		}
 		if b, err = d.Slice(int(l)); err == nil {
 
-			// Create a new slice and figure out its element type
-			elemType := c.sliceType.Elem()
-			slice := reflect.MakeSlice(c.sliceType, 0, 64)
+			count := countVarints(b)
+			if rv.Cap() < count {
+				rv.Set(reflect.MakeSlice(c.sliceType, count, count))
+			} else {
+				rv.SetLen(count)
+			}
 
 			// Iterate through and uncompress
 			prev := int64(0)
-			for i := 0; i < len(b); {
+			for i, j := 0, 0; i < len(b); j++ {
 				diff, n := bin.Varint(b[i:])
+				if n <= 0 {
+					return errInvalidVarint
+				}
 				prev = prev + diff
-				slice = reflect.Append(slice, reflect.ValueOf(prev).Convert(elemType))
+				rv.Index(j).SetInt(prev)
 				i += n
 			}
-
-			rv.Set(slice)
 		}
 	}
 	return
@@ -111,23 +122,40 @@ func (c *uintSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 	var l uint64
 	var b []byte
 
-	if l, err = d.ReadUvarint(); err == nil && l > 0 {
+	if l, err = d.ReadUvarint(); err == nil {
+		if l == 0 {
+			rv.SetLen(0)
+			return nil
+		}
 		if b, err = d.Slice(int(l)); err == nil {
 
-			// Create a new slice and figure out its element type
-			elemType := c.sliceType.Elem()
-			slice := reflect.MakeSlice(c.sliceType, 0, 64)
+			count := countVarints(b)
+			if rv.Cap() < count {
+				rv.Set(reflect.MakeSlice(c.sliceType, count, count))
+			} else {
+				rv.SetLen(count)
+			}
 
 			// Iterate through and uncompress
 			prev := uint64(0)
-			for i := 0; i < len(b); {
+			for i, j := 0, 0; i < len(b); j++ {
 				diff, n := bin.Uvarint(b[i:])
+				if n <= 0 {
+					return errInvalidVarint
+				}
 				prev = prev + diff
-				slice = reflect.Append(slice, reflect.ValueOf(prev).Convert(elemType))
+				rv.Index(j).SetUint(prev)
 				i += n
 			}
+		}
+	}
+	return
+}
 
-			rv.Set(slice)
+func countVarints(b []byte) (count int) {
+	for _, v := range b {
+		if v < 0x80 {
+			count++
 		}
 	}
 	return

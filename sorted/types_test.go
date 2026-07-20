@@ -50,10 +50,22 @@ func TestTypes(t *testing.T) {
 			b, err := binary.Marshal(tc.value)
 			assert.NoError(t, err)
 			assert.NotNil(t, b)
-			assert.NoError(t, binary.Unmarshal(b, tc.out))
-			assert.Equal(t, tc.value, deref(tc.out))
+			for range 2 {
+				assert.NoError(t, binary.Unmarshal(b, tc.out))
+				assert.Equal(t, tc.value, deref(tc.out))
+			}
 		})
 	}
+}
+
+func TestDecodeEmptySlices(t *testing.T) {
+	ints := Int32s{1}
+	assert.NoError(t, binary.Unmarshal([]byte{0}, &ints))
+	assert.Empty(t, ints)
+
+	uints := Uint32s{1}
+	assert.NoError(t, binary.Unmarshal([]byte{0}, &uints))
+	assert.Empty(t, uints)
 }
 
 func deref(v any) any {

@@ -14,9 +14,7 @@ import (
 
 // Reusable long-lived encoder pool.
 var encoders = &sync.Pool{New: func() any {
-	return &Encoder{
-		schemas: make(map[reflect.Type]Codec),
-	}
+	return new(Encoder)
 }}
 
 // Marshal encodes the payload into binary format.
@@ -49,17 +47,15 @@ func MarshalTo(v any, dst io.Writer) (err error) {
 // Encoder represents a binary encoder.
 type Encoder struct {
 	scratch [10]byte
-	schemas map[reflect.Type]Codec
+	last    reflect.Type
+	codec   Codec
 	out     io.Writer
 	err     error
 }
 
 // NewEncoder creates a new encoder.
 func NewEncoder(out io.Writer) *Encoder {
-	return &Encoder{
-		out:     out,
-		schemas: make(map[reflect.Type]Codec),
-	}
+	return &Encoder{out: out}
 }
 
 // Reset resets the encoder and makes it ready to be reused.
@@ -78,9 +74,14 @@ func (e *Encoder) Encode(v any) (err error) {
 
 	// Scan the type (this will load from cache)
 	rv := reflect.Indirect(reflect.ValueOf(v))
-	var c Codec
-	if c, err = scanToCache(rv.Type(), e.schemas); err != nil {
-		return
+	t := rv.Type()
+	c := e.codec
+	if t != e.last {
+		if c, err = scan(t); err != nil {
+			return
+		}
+		e.last = t
+		e.codec = c
 	}
 
 	// Encode the value

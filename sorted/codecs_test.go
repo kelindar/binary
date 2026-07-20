@@ -18,3 +18,14 @@ func TestPayload(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, encoded, ev)
 }
+
+func TestInvalidVarint(t *testing.T) {
+	for name, out := range map[string]any{
+		"int":  new(Int32s),
+		"uint": new(Uint32s),
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, errInvalidVarint, binary.Unmarshal([]byte{1, 0x80}, out))
+		})
+	}
+}

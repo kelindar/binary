@@ -34,15 +34,13 @@ func Unmarshal(b []byte, v any) (err error) {
 type Decoder struct {
 	reader  reader
 	scratch [10]byte
-	schemas map[reflect.Type]Codec
+	last    reflect.Type
+	codec   Codec
 }
 
 // NewDecoder creates a binary decoder.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{
-		reader:  newReader(r),
-		schemas: make(map[reflect.Type]Codec),
-	}
+	return &Decoder{reader: newReader(r)}
 }
 
 // Decode decodes a value by reading from the underlying io.Reader.
@@ -53,10 +51,16 @@ func (d *Decoder) Decode(v any) (err error) {
 	}
 
 	// Scan the type (this will load from cache)
-	var c Codec
-	if c, err = scanToCache(rv.Type(), d.schemas); err == nil {
-		err = c.DecodeTo(d, rv)
+	t := rv.Type()
+	c := d.codec
+	if t != d.last {
+		if c, err = scan(t); err != nil {
+			return
+		}
+		d.last = t
+		d.codec = c
 	}
+	err = c.DecodeTo(d, rv)
 
 	return
 }

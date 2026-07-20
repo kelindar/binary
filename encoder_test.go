@@ -4,6 +4,8 @@
 package binary
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 	"unsafe"
 
@@ -86,7 +88,32 @@ func TestEncodeStruct(t *testing.T) {
 
 func TestEncoderSizeOf(t *testing.T) {
 	var e Encoder
-	assert.Equal(t, 56, int(unsafe.Sizeof(e)))
+	assert.Equal(t, 80, int(unsafe.Sizeof(e)))
+	assert.Equal(t, 24, int(unsafe.Sizeof(fieldCodec{})))
+}
+
+func TestEncoderDecoderAlternatingTypes(t *testing.T) {
+	type first struct{ Value uint64 }
+	type second struct{ Value string }
+
+	values := []any{
+		&first{Value: 1},
+		&second{Value: "two"},
+		&first{Value: 3},
+	}
+
+	var buffer bytes.Buffer
+	encoder := NewEncoder(&buffer)
+	for _, value := range values {
+		assert.NoError(t, encoder.Encode(value))
+	}
+
+	decoder := NewDecoder(&buffer)
+	for _, want := range values {
+		got := reflect.New(reflect.TypeOf(want).Elem()).Interface()
+		assert.NoError(t, decoder.Decode(got))
+		assert.Equal(t, want, got)
+	}
 }
 
 func TestCustomCodec(t *testing.T) {
