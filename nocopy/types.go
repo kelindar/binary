@@ -224,13 +224,9 @@ type integerSliceCodec struct {
 
 // EncodeTo encodes a value into the encoder.
 func (c *integerSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
-	var out reflect.SliceHeader
-	out.Data = rv.Pointer()
-	out.Len = rv.Len() * c.sizeOfInt
-	out.Cap = out.Len
-
-	e.WriteUint64(uint64(rv.Len() * c.sizeOfInt))
-	e.Write(*(*[]byte)(unsafe.Pointer(&out)))
+	n := rv.Len() * c.sizeOfInt
+	e.WriteUint64(uint64(n))
+	e.Write(unsafe.Slice((*byte)(rv.UnsafePointer()), n))
 	return
 }
 
@@ -241,10 +237,17 @@ func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err e
 
 	if l, err = d.ReadUint64(); err == nil && l > 0 {
 		if b, err = d.Slice(int(l)); err == nil {
-			out := (*reflect.SliceHeader)(unsafe.Pointer(rv.UnsafeAddr()))
-			out.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b)).Data
-			out.Len = int(l) / c.sizeOfInt
-			out.Cap = int(l) / c.sizeOfInt
+			count := int(l) / c.sizeOfInt
+			hdr := struct {
+				Data unsafe.Pointer
+				Len  int
+				Cap  int
+			}{
+				Data: unsafe.Pointer(unsafe.SliceData(b)),
+				Len:  count,
+				Cap:  count,
+			}
+			rv.Set(reflect.NewAt(c.sliceType, unsafe.Pointer(&hdr)).Elem())
 		}
 	}
 	return
