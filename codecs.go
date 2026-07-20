@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"reflect"
+	"unsafe"
 )
 
 // Constants
@@ -309,19 +310,86 @@ func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error)
 
 type reflectStructCodec []fieldCodec
 
-const fieldWritable = uint64(1) << 63
+const (
+	fieldOffsetMask = uint64(1)<<56 - 1
+	fieldKindShift  = 56
+	fieldKindMask   = uint64(0x1f) << fieldKindShift
+	fieldDirect     = uint64(1) << 61
+	fieldIncluded   = uint64(1) << 62
+	fieldWritable   = uint64(1) << 63
+)
 
 type fieldCodec struct {
 	Field uint64
 	Codec Codec
 }
 
+func (f *fieldCodec) offset() uintptr {
+	return uintptr(f.Field & fieldOffsetMask)
+}
+
+func (f *fieldCodec) kind() reflect.Kind {
+	return reflect.Kind((f.Field & fieldKindMask) >> fieldKindShift)
+}
+
 // Encode encodes a value into the encoder.
 func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 {
+		base := unsafe.Pointer(rv.UnsafeAddr())
+		for i := range c {
+			field := &c[i]
+			if field.Field&fieldIncluded == 0 {
+				continue
+			}
+			pointer := unsafe.Add(base, field.offset())
+			switch field.kind() {
+			case reflect.String:
+				e.WriteString(*(*string)(pointer))
+			case reflect.Bool:
+				e.writeBool(*(*bool)(pointer))
+			case reflect.Int:
+				e.WriteVarint(int64(*(*int)(pointer)))
+			case reflect.Int8:
+				e.WriteVarint(int64(*(*int8)(pointer)))
+			case reflect.Int16:
+				e.WriteVarint(int64(*(*int16)(pointer)))
+			case reflect.Int32:
+				e.WriteVarint(int64(*(*int32)(pointer)))
+			case reflect.Int64:
+				e.WriteVarint(*(*int64)(pointer))
+			case reflect.Uint:
+				e.WriteUvarint(uint64(*(*uint)(pointer)))
+			case reflect.Uint8:
+				e.WriteUvarint(uint64(*(*uint8)(pointer)))
+			case reflect.Uint16:
+				e.WriteUvarint(uint64(*(*uint16)(pointer)))
+			case reflect.Uint32:
+				e.WriteUvarint(uint64(*(*uint32)(pointer)))
+			case reflect.Uint64:
+				e.WriteUvarint(*(*uint64)(pointer))
+			case reflect.Complex64:
+				e.writeComplex64(*(*complex64)(pointer))
+			case reflect.Complex128:
+				e.writeComplex128(*(*complex128)(pointer))
+			case reflect.Float32:
+				e.WriteFloat32(*(*float32)(pointer))
+			case reflect.Float64:
+				e.WriteFloat64(*(*float64)(pointer))
+			default:
+				if err = field.Codec.EncodeTo(e, rv.Field(i)); err != nil {
+					return
+				}
+			}
+		}
+		return
+	}
+
 	for i := range c {
 		field := &c[i]
-		index := int(field.Field &^ fieldWritable)
-		if err = field.Codec.EncodeTo(e, rv.Field(index)); err != nil {
+		if field.Field&fieldIncluded == 0 {
+			continue
+		}
+		if err = field.Codec.EncodeTo(e, rv.Field(i)); err != nil {
 			return
 		}
 	}
@@ -330,11 +398,140 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 
 // Decode decodes into a reflect value from the decoder.
 func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 {
+		base := unsafe.Pointer(rv.UnsafeAddr())
+		for i := range c {
+			field := &c[i]
+			if field.Field&fieldWritable == 0 {
+				continue
+			}
+			pointer := unsafe.Add(base, field.offset())
+			switch field.kind() {
+			case reflect.String:
+				var value string
+				value, err = d.ReadString()
+				if err != nil {
+					return
+				}
+				*(*string)(pointer) = value
+			case reflect.Bool:
+				var value bool
+				value, err = d.ReadBool()
+				if err != nil {
+					return
+				}
+				*(*bool)(pointer) = value
+			case reflect.Int:
+				var value int64
+				value, err = d.ReadVarint()
+				if err != nil {
+					return
+				}
+				*(*int)(pointer) = int(value)
+			case reflect.Int8:
+				var value int64
+				value, err = d.ReadVarint()
+				if err != nil {
+					return
+				}
+				*(*int8)(pointer) = int8(value)
+			case reflect.Int16:
+				var value int64
+				value, err = d.ReadVarint()
+				if err != nil {
+					return
+				}
+				*(*int16)(pointer) = int16(value)
+			case reflect.Int32:
+				var value int64
+				value, err = d.ReadVarint()
+				if err != nil {
+					return
+				}
+				*(*int32)(pointer) = int32(value)
+			case reflect.Int64:
+				var value int64
+				value, err = d.ReadVarint()
+				if err != nil {
+					return
+				}
+				*(*int64)(pointer) = value
+			case reflect.Uint:
+				var value uint64
+				value, err = d.ReadUvarint()
+				if err != nil {
+					return
+				}
+				*(*uint)(pointer) = uint(value)
+			case reflect.Uint8:
+				var value uint64
+				value, err = d.ReadUvarint()
+				if err != nil {
+					return
+				}
+				*(*uint8)(pointer) = uint8(value)
+			case reflect.Uint16:
+				var value uint64
+				value, err = d.ReadUvarint()
+				if err != nil {
+					return
+				}
+				*(*uint16)(pointer) = uint16(value)
+			case reflect.Uint32:
+				var value uint64
+				value, err = d.ReadUvarint()
+				if err != nil {
+					return
+				}
+				*(*uint32)(pointer) = uint32(value)
+			case reflect.Uint64:
+				var value uint64
+				value, err = d.ReadUvarint()
+				if err != nil {
+					return
+				}
+				*(*uint64)(pointer) = value
+			case reflect.Complex64:
+				var value complex64
+				value, err = d.readComplex64()
+				if err != nil {
+					return
+				}
+				*(*complex64)(pointer) = value
+			case reflect.Complex128:
+				var value complex128
+				value, err = d.readComplex128()
+				if err != nil {
+					return
+				}
+				*(*complex128)(pointer) = value
+			case reflect.Float32:
+				var value float32
+				value, err = d.ReadFloat32()
+				if err != nil {
+					return
+				}
+				*(*float32)(pointer) = value
+			case reflect.Float64:
+				var value float64
+				value, err = d.ReadFloat64()
+				if err != nil {
+					return
+				}
+				*(*float64)(pointer) = value
+			default:
+				if err = field.Codec.DecodeTo(d, rv.Field(i)); err != nil {
+					return
+				}
+			}
+		}
+		return
+	}
+
 	for i := range c {
 		field := &c[i]
 		if field.Field&fieldWritable != 0 {
-			index := int(field.Field &^ fieldWritable)
-			err = field.Codec.DecodeTo(d, rv.Field(index))
+			err = field.Codec.DecodeTo(d, rv.Field(i))
 		}
 		if err != nil {
 			return

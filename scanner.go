@@ -109,22 +109,37 @@ func scanSlice(t reflect.Type) (Codec, error) {
 }
 
 func scanStructCodec(t reflect.Type) (Codec, error) {
-	s := scanStruct(t)
-	v := make(reflectStructCodec, 0, len(s.fields))
-	for _, i := range s.fields {
+	v := make(reflectStructCodec, t.NumField())
+	hasDirect := false
+	for i := range t.NumField() {
 		field := t.Field(i)
+		if field.Name == "_" || field.Tag.Get("binary") == "-" {
+			continue
+		}
 		codec, err := scanType(field.Type)
 		if err != nil {
 			return nil, err
 		}
-		packed := uint64(i)
+		kind := reflect.Invalid
+		switch codec.(type) {
+		case *stringCodec, *boolCodec, *varintCodec, *varuintCodec,
+			*complex64Codec, *complex128Codec, *float32Codec, *float64Codec:
+			kind = field.Type.Kind()
+			hasDirect = true
+		}
+		packed := uint64(field.Offset) |
+			uint64(kind)<<fieldKindShift |
+			fieldIncluded
 		if field.PkgPath == "" {
 			packed |= fieldWritable
 		}
-		v = append(v, fieldCodec{
+		v[i] = fieldCodec{
 			Field: packed,
 			Codec: codec,
-		})
+		}
+	}
+	if hasDirect {
+		v[0].Field |= fieldDirect
 	}
 	return &v, nil
 }
@@ -162,23 +177,6 @@ func scanPrimitive(kind reflect.Kind) Codec {
 	default:
 		return nil
 	}
-}
-
-type scannedStruct struct {
-	fields []int
-}
-
-func scanStruct(t reflect.Type) (meta *scannedStruct) {
-	l := t.NumField()
-	meta = new(scannedStruct)
-	for i := range l {
-		if t.Field(i).Name != "_" {
-			if t.Field(i).Tag.Get("binary") != "-" {
-				meta.fields = append(meta.fields, i)
-			}
-		}
-	}
-	return
 }
 
 // scanBinaryMarshaler scans whether a type has a custom binary marshaling implemented.

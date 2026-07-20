@@ -315,10 +315,13 @@ func testMarshalBigStruct(t *testing.T) {
 
 func TestStruct(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"nested fields":   testStructNestedFields,
-		"embedded struct": testStructEmbedded,
-		"array of struct": testStructArray,
-		"slice of struct": testStructSlice,
+		"nested fields":         testStructNestedFields,
+		"embedded struct":       testStructEmbedded,
+		"array of struct":       testStructArray,
+		"slice of struct":       testStructSlice,
+		"trace slice wire":      testStructTraceSliceWire,
+		"decode error keeps field": testStructDecodeErrorKeepsField,
+		"custom field codec":    testStructCustomFieldCodec,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -461,6 +464,84 @@ func testStructSlice(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
+}
+
+type tracePayload struct {
+	Spans []traceSpan
+}
+
+type traceSpan struct {
+	Ordinal    uint32
+	At         int64
+	Scope      string
+	Node       string
+	NodeType   string
+	Phase      string
+	Invocation uint32
+	Target     string
+}
+
+type customFieldString string
+
+func (customFieldString) MarshalBinary() ([]byte, error) {
+	return []byte("custom"), nil
+}
+
+func (s *customFieldString) UnmarshalBinary([]byte) error {
+	*s = "decoded"
+	return nil
+}
+
+func testStructTraceSliceWire(t *testing.T) {
+	want := tracePayload{Spans: []traceSpan{{
+		Ordinal:    1,
+		At:         2,
+		Scope:      "s",
+		Node:       "n",
+		NodeType:   "t",
+		Phase:      "p",
+		Invocation: 3,
+		Target:     "x",
+	}}}
+	wire := []byte{1, 1, 4, 1, 's', 1, 'n', 1, 't', 1, 'p', 3, 1, 'x'}
+
+	encoded, err := Marshal(&want)
+	assert.NoError(t, err)
+	assert.Equal(t, wire, encoded)
+
+	encodedValue, err := Marshal(want)
+	assert.NoError(t, err)
+	assert.Equal(t, wire, encodedValue)
+
+	var got tracePayload
+	assert.NoError(t, Unmarshal(wire, &got))
+	assert.Equal(t, want, got)
+}
+
+func testStructDecodeErrorKeepsField(t *testing.T) {
+	type payload struct {
+		Prefix uint32
+		Value  string
+	}
+
+	got := payload{Value: "keep"}
+	err := Unmarshal([]byte{1, 2, 'x'}, &got)
+	assert.Error(t, err)
+	assert.Equal(t, payload{Prefix: 1, Value: "keep"}, got)
+}
+
+func testStructCustomFieldCodec(t *testing.T) {
+	type payload struct {
+		Value customFieldString
+	}
+
+	wire, err := Marshal(&payload{Value: "input"})
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{6, 'c', 'u', 's', 't', 'o', 'm'}, wire)
+
+	var got payload
+	assert.NoError(t, Unmarshal(wire, &got))
+	assert.Equal(t, payload{Value: "decoded"}, got)
 }
 
 func TestPointer(t *testing.T) {
