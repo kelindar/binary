@@ -10,32 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-/*
-BenchmarkTimeSeries/encode-10         	   10000	    103506 ns/op	  123136 B/op	       6 allocs/op
-BenchmarkTimeSeries/decode-10         	   13610	     85692 ns/op	  661022 B/op	      22 allocs/op
-*/
-func BenchmarkTimeSeries(b *testing.B) {
-	series := makeTimeCounters(20000)
-	enc, _ := binary.Marshal(&series)
-
-	b.Run("encode", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			binary.Marshal(&series)
-		}
-	})
-
-	b.Run("decode", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		var out Timestamps
-		for n := 0; n < b.N; n++ {
-			binary.Unmarshal(enc, &out)
-		}
-	})
-}
-
 func TestTimeSeries(t *testing.T) {
 
 	// Marshal

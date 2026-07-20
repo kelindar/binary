@@ -4,20 +4,11 @@
 package binary
 
 import (
-	"bytes"
-	"encoding/json"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
-
-var testMsg = msg{
-	Name:      "Roman",
-	Timestamp: 1242345235,
-	Payload:   []byte("hi"),
-	Ssid:      []uint32{1, 2, 3},
-}
 
 type composite map[string]column
 
@@ -85,66 +76,6 @@ func newComposite() composite {
 		},
 	}
 	return v
-}
-
-/*
-cpu: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
-Benchmark_Binary/marshal-12         	 5074890	       227.4 ns/op	     112 B/op	       2 allocs/op
-Benchmark_Binary/marshal-to-12      	 7011523	       162.3 ns/op	      30 B/op	       0 allocs/op
-Benchmark_Binary/unmarshal-12       	 4224048	       283.0 ns/op	      72 B/op	       5 allocs/op
-*/
-func BenchmarkBinary(b *testing.B) {
-	v := testMsg
-	enc, _ := Marshal(&v)
-
-	b.Run("marshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			Marshal(&v)
-		}
-	})
-
-	var buffer bytes.Buffer
-	b.Run("marshal-to", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			buffer.Reset()
-			MarshalTo(&v, &buffer)
-		}
-	})
-
-	b.Run("unmarshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		var out msg
-		for n := 0; n < b.N; n++ {
-			Unmarshal(enc, &out)
-		}
-	})
-}
-
-func BenchmarkJSON(b *testing.B) {
-	v := testMsg
-	enc, _ := json.Marshal(&v)
-
-	b.Run("marshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			json.Marshal(&v)
-		}
-	})
-
-	b.Run("unmarshal", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		var out msg
-		for n := 0; n < b.N; n++ {
-			json.Unmarshal(enc, &out)
-		}
-	})
 }
 
 func TestBinaryEncodeStruct(t *testing.T) {
