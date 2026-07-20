@@ -82,15 +82,15 @@ func (s *s2) MarshalBinary() (data []byte, err error) {
 
 func TestMarshal(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"time slice":         testMarshalTimeSlice,
-		"nil slice EOF":      testMarshalNilSliceEOF,
-		"simple struct":      testMarshalSimpleStruct,
+		"time slice":          testMarshalTimeSlice,
+		"nil slice EOF":       testMarshalNilSliceEOF,
+		"simple struct":       testMarshalSimpleStruct,
 		"simple struct slice": testMarshalSimpleStructSlice,
-		"complex struct":     testMarshalComplexStruct,
-		"binary marshaler":   testMarshalBinaryMarshaler,
-		"type alias":         testMarshalTypeAlias,
-		"non-pointer value":  testMarshalNonPointer,
-		"big struct":         testMarshalBigStruct,
+		"complex struct":      testMarshalComplexStruct,
+		"binary marshaler":    testMarshalBinaryMarshaler,
+		"type alias":          testMarshalTypeAlias,
+		"non-pointer value":   testMarshalNonPointer,
+		"big struct":          testMarshalBigStruct,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -174,6 +174,89 @@ func testMarshalSimpleStructSlice(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, input, v)
 	assert.Equal(t, 2, len(v))
+}
+
+func TestSliceWireFormat(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		want  []byte
+	}{
+		{"ints", []int64{-2, -1, 0, 1, 2}, []byte{5, 3, 1, 0, 2, 4}},
+		{"uints", []uint64{0, 1, 127, 128}, []byte{4, 0, 1, 127, 128, 1}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestDecodePopulatedSlice(t *testing.T) {
+	type item struct {
+		Bytes []byte
+		Uints []uint64
+	}
+
+	want := []item{
+		{Bytes: []byte("first"), Uints: []uint64{1, 2, 3}},
+		{Bytes: []byte("second"), Uints: []uint64{4, 5, 6}},
+	}
+	encoded, err := Marshal(want)
+	assert.NoError(t, err)
+
+	got := []item{
+		{Bytes: make([]byte, 1, 32), Uints: make([]uint64, 1, 32)},
+		{Bytes: make([]byte, 1, 32), Uints: make([]uint64, 1, 32)},
+	}
+	for range 2 {
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, want, got)
+	}
+}
+
+func TestDecodeEmptySlices(t *testing.T) {
+	type item struct {
+		Bytes []byte
+		Uints []uint64
+	}
+
+	got := []item{{Bytes: []byte{1}, Uints: []uint64{1}}}
+	encoded, err := Marshal([]item{{}})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	if assert.Len(t, got, 1) {
+		assert.Empty(t, got[0].Bytes)
+		assert.Empty(t, got[0].Uints)
+	}
+
+	encoded, err = Marshal([]item{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Empty(t, got)
+}
+
+func TestDecodePopulatedMap(t *testing.T) {
+	want := map[string][]byte{
+		"first":  []byte("one"),
+		"second": []byte("two"),
+	}
+	encoded, err := Marshal(want)
+	assert.NoError(t, err)
+
+	got := map[string][]byte{"stale": []byte("value")}
+	for range 2 {
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, want, got)
+	}
+
+	encoded, err = Marshal(map[string][]byte{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Empty(t, got)
 }
 
 func testMarshalComplexStruct(t *testing.T) {
@@ -382,10 +465,10 @@ func testStructSlice(t *testing.T) {
 
 func TestPointer(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"basic types":           testPointerBasicTypes,
-		"pointer of pointer":    testPointerOfPointer,
-		"struct pointer field":  testPointerStructField,
-		"slice of pointers":     testPointerSlice,
+		"basic types":            testPointerBasicTypes,
+		"pointer of pointer":     testPointerOfPointer,
+		"struct pointer field":   testPointerStructField,
+		"slice of pointers":      testPointerSlice,
 		"slice of time pointers": testPointerTimeSlice,
 	}
 	for name, fn := range tests {
@@ -486,7 +569,7 @@ func testPointerBasicTypes(t *testing.T) {
 		}
 	}
 	for _, nilChance := range []float32{.5, 0, 1} {
-		for i := 0; i < 10; i += 1 {
+		for range 10 {
 			btOrig := &BT{}
 			fuzz(btOrig, nilChance)
 			payload, err := Marshal(btOrig)
@@ -612,29 +695,29 @@ func testPointerTimeSlice(t *testing.T) {
 
 func TestFloat(t *testing.T) {
 	tests := map[string]struct {
-		marshal func() (interface{}, []byte, error)
-		unmarshal func([]byte) (interface{}, error)
-		want interface{}
+		marshal   func() (any, []byte, error)
+		unmarshal func([]byte) (any, error)
+		want      any
 	}{
 		"float32": {
-			marshal: func() (interface{}, []byte, error) {
+			marshal: func() (any, []byte, error) {
 				v := float32(1.15)
 				b, err := Marshal(&v)
 				return v, b, err
 			},
-			unmarshal: func(b []byte) (interface{}, error) {
+			unmarshal: func(b []byte) (any, error) {
 				var o float32
 				err := Unmarshal(b, &o)
 				return o, err
 			},
 		},
 		"float64": {
-			marshal: func() (interface{}, []byte, error) {
+			marshal: func() (any, []byte, error) {
 				v := float64(1.15)
 				b, err := Marshal(&v)
 				return v, b, err
 			},
-			unmarshal: func(b []byte) (interface{}, error) {
+			unmarshal: func(b []byte) (any, error) {
 				var o float64
 				err := Unmarshal(b, &o)
 				return o, err

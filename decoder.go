@@ -13,12 +13,12 @@ import (
 )
 
 // Reusable long-lived decoder pool.
-var decoders = &sync.Pool{New: func() interface{} {
+var decoders = &sync.Pool{New: func() any {
 	return NewDecoder(newReader(nil))
 }}
 
 // Unmarshal decodes the payload from the binary format.
-func Unmarshal(b []byte, v interface{}) (err error) {
+func Unmarshal(b []byte, v any) (err error) {
 
 	// Get the decoder from the pool, reset it
 	d := decoders.Get().(*Decoder)
@@ -34,29 +34,33 @@ func Unmarshal(b []byte, v interface{}) (err error) {
 type Decoder struct {
 	reader  reader
 	scratch [10]byte
-	schemas map[reflect.Type]Codec
+	last    reflect.Type
+	codec   Codec
 }
 
 // NewDecoder creates a binary decoder.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{
-		reader:  newReader(r),
-		schemas: make(map[reflect.Type]Codec),
-	}
+	return &Decoder{reader: newReader(r)}
 }
 
 // Decode decodes a value by reading from the underlying io.Reader.
-func (d *Decoder) Decode(v interface{}) (err error) {
+func (d *Decoder) Decode(v any) (err error) {
 	rv := reflect.Indirect(reflect.ValueOf(v))
 	if !rv.CanAddr() {
 		return errors.New("binary: can only decode to pointer type")
 	}
 
 	// Scan the type (this will load from cache)
-	var c Codec
-	if c, err = scanToCache(rv.Type(), d.schemas); err == nil {
-		err = c.DecodeTo(d, rv)
+	t := rv.Type()
+	c := d.codec
+	if t != d.last {
+		if c, err = scan(t); err != nil {
+			return
+		}
+		d.last = t
+		d.codec = c
 	}
+	err = c.DecodeTo(d, rv)
 
 	return
 }

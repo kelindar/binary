@@ -94,7 +94,7 @@ func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 // appendDelta appends a delta array into the buffer
 func appendDelta(dst []byte, data []uint64) []byte {
 	prev := uint64(0)
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		diff := data[i] - prev
 		prev = data[i]
 
@@ -112,7 +112,7 @@ func appendDelta(dst []byte, data []uint64) []byte {
 // readDelta reads a delta array from the buffer
 func readDelta(dst []uint64, src []byte) (read int) {
 	prev := uint64(0)
-	for i := 0; i < len(dst); i++ {
+	for i := range dst {
 		diff, n := bin.Uvarint(src[read:])
 		prev = prev + diff
 		dst[i] = prev

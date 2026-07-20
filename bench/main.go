@@ -5,7 +5,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -25,7 +24,6 @@ func main() {
 	},
 		bench.WithSamples(100),
 		bench.WithDuration(10*time.Millisecond),
-		bench.WithReference(),
 	)
 }
 
@@ -64,24 +62,16 @@ func runBinaryMsg(b *bench.B) {
 		Ssid:      []uint32{1, 2, 3},
 	}
 	enc, _ := binary.Marshal(&v)
-	jsonEnc, _ := json.Marshal(&v)
 
 	var buffer bytes.Buffer
 	var out msg
-	var jsonOut msg
 
-	b.Run("binary/enc",
-		func(int) { binary.Marshal(&v) },
-		func(int) { json.Marshal(&v) },
-	)
+	b.Run("binary/enc", func(int) { binary.Marshal(&v) })
 	b.Run("binary/enc-to", func(int) {
 		buffer.Reset()
 		binary.MarshalTo(&v, &buffer)
 	})
-	b.Run("binary/dec",
-		func(int) { binary.Unmarshal(enc, &out) },
-		func(int) { json.Unmarshal(jsonEnc, &jsonOut) },
-	)
+	b.Run("binary/dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runBinaryMap(b *bench.B) {
@@ -90,19 +80,10 @@ func runBinaryMap(b *bench.B) {
 		v[fmt.Sprintf("key-%d", i)] = makeBytes(64)
 	}
 	enc, _ := binary.Marshal(&v)
-	jsonEnc, _ := json.Marshal(&v)
-
 	var out map[string][]byte
-	var jsonOut map[string][]byte
 
-	b.Run("binary/map-enc",
-		func(int) { binary.Marshal(&v) },
-		func(int) { json.Marshal(&v) },
-	)
-	b.Run("binary/map-dec",
-		func(int) { binary.Unmarshal(enc, &out) },
-		func(int) { json.Unmarshal(jsonEnc, &jsonOut) },
-	)
+	b.Run("binary/map-enc", func(int) { binary.Marshal(&v) })
+	b.Run("binary/map-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runBinarySlice(b *bench.B) {
@@ -116,19 +97,10 @@ func runBinarySlice(b *bench.B) {
 		}
 	}
 	enc, _ := binary.Marshal(&v)
-	jsonEnc, _ := json.Marshal(&v)
-
 	var out []msg
-	var jsonOut []msg
 
-	b.Run("binary/slice-enc",
-		func(int) { binary.Marshal(&v) },
-		func(int) { json.Marshal(&v) },
-	)
-	b.Run("binary/slice-dec",
-		func(int) { binary.Unmarshal(enc, &out) },
-		func(int) { json.Unmarshal(jsonEnc, &jsonOut) },
-	)
+	b.Run("binary/slice-enc", func(int) { binary.Marshal(&v) })
+	b.Run("binary/slice-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runBinaryNested(b *bench.B) {
@@ -156,19 +128,10 @@ func runBinaryNested(b *bench.B) {
 		Items: items,
 	}
 	enc, _ := binary.Marshal(&v)
-	jsonEnc, _ := json.Marshal(&v)
-
 	var out nested
-	var jsonOut nested
 
-	b.Run("binary/nest-enc",
-		func(int) { binary.Marshal(&v) },
-		func(int) { json.Marshal(&v) },
-	)
-	b.Run("binary/nest-dec",
-		func(int) { binary.Unmarshal(enc, &out) },
-		func(int) { json.Unmarshal(jsonEnc, &jsonOut) },
-	)
+	b.Run("binary/nest-enc", func(int) { binary.Marshal(&v) })
+	b.Run("binary/nest-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runBinaryBytes(b *bench.B) {
@@ -207,21 +170,15 @@ func runBinaryReuse(b *bench.B) {
 	decoder := binary.NewDecoder(reader)
 	_ = decoder.Decode(&out) // warm schema cache
 
-	b.Run("binary/reuse-enc",
-		func(int) {
-			buf.Reset()
-			encoder.Reset(&buf)
-			_ = encoder.Encode(&v)
-		},
-		func(int) { binary.Marshal(&v) },
-	)
-	b.Run("binary/stream-dec",
-		func(int) {
-			reader.Reset(enc)
-			_ = decoder.Decode(&out)
-		},
-		func(int) { binary.Unmarshal(enc, &out) },
-	)
+	b.Run("binary/reuse-enc", func(int) {
+		buf.Reset()
+		encoder.Reset(&buf)
+		_ = encoder.Encode(&v)
+	})
+	b.Run("binary/stream-dec", func(int) {
+		reader.Reset(enc)
+		_ = decoder.Decode(&out)
+	})
 }
 
 // ------------------------------------------------------------------------------
@@ -270,22 +227,12 @@ func runNocopy(b *bench.B) {
 }
 
 func runNocopyString(b *bench.B) {
-	safe := testString
-	unsafe := nocopy.String(testString)
-	safeEnc, _ := binary.Marshal(&safe)
-	unsafeEnc, _ := binary.Marshal(&unsafe)
+	v := nocopy.String(testString)
+	enc, _ := binary.Marshal(&v)
+	var out nocopy.String
 
-	var safeOut []byte
-	var unsafeOut nocopy.String
-
-	b.Run("nocopy/str-enc",
-		func(int) { binary.Marshal(&unsafe) },
-		func(int) { binary.Marshal(&safe) },
-	)
-	b.Run("nocopy/str-dec",
-		func(int) { binary.Unmarshal(unsafeEnc, &unsafeOut) },
-		func(int) { binary.Unmarshal(safeEnc, &safeOut) },
-	)
+	b.Run("nocopy/str-enc", func(int) { binary.Marshal(&v) })
+	b.Run("nocopy/str-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runNocopyDictionary(b *bench.B) {
@@ -328,41 +275,21 @@ func runNocopyHashMap(b *bench.B) {
 }
 
 func runNocopyBytes(b *bench.B) {
-	safe := makeBytes(defaultSize)
-	unsafe := nocopy.Bytes(makeBytes(defaultSize))
-	safeEnc, _ := binary.Marshal(&safe)
-	unsafeEnc, _ := binary.Marshal(&unsafe)
+	v := nocopy.Bytes(makeBytes(defaultSize))
+	enc, _ := binary.Marshal(&v)
+	var out nocopy.Bytes
 
-	var safeOut []byte
-	var unsafeOut nocopy.Bytes
-
-	b.Run("nocopy/bytes-enc",
-		func(int) { binary.Marshal(&unsafe) },
-		func(int) { binary.Marshal(&safe) },
-	)
-	b.Run("nocopy/bytes-dec",
-		func(int) { binary.Unmarshal(unsafeEnc, &unsafeOut) },
-		func(int) { binary.Unmarshal(safeEnc, &safeOut) },
-	)
+	b.Run("nocopy/bytes-enc", func(int) { binary.Marshal(&v) })
+	b.Run("nocopy/bytes-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runNocopyUint64s(b *bench.B) {
-	safe := makeUint64s(defaultSize)
-	unsafe := nocopy.Uint64s(makeUint64s(defaultSize))
-	safeEnc, _ := binary.Marshal(&safe)
-	unsafeEnc, _ := binary.Marshal(&unsafe)
+	v := nocopy.Uint64s(makeUint64s(defaultSize))
+	enc, _ := binary.Marshal(&v)
+	var out nocopy.Uint64s
 
-	var safeOut []uint64
-	var unsafeOut nocopy.Uint64s
-
-	b.Run("nocopy/u64-enc",
-		func(int) { binary.Marshal(&unsafe) },
-		func(int) { binary.Marshal(&safe) },
-	)
-	b.Run("nocopy/u64-dec",
-		func(int) { binary.Unmarshal(unsafeEnc, &unsafeOut) },
-		func(int) { binary.Unmarshal(safeEnc, &safeOut) },
-	)
+	b.Run("nocopy/u64-enc", func(int) { binary.Marshal(&v) })
+	b.Run("nocopy/u64-dec", func(int) { binary.Unmarshal(enc, &out) })
 }
 
 func runNocopyColumnar(b *bench.B) {
@@ -522,20 +449,10 @@ var uint64Arr = []uint64{4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5
 	4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6, 4, 5, 6, 1, 2, 3, 5, 3, 2, 6, 1, 6, 7, 6, 1, 2, 6}
 
 func runUnsafe(b *bench.B) {
-	safe := uint64Arr
-	unsafe := binunsafe.Uint64s(uint64Arr)
-	safeEnc, _ := binary.Marshal(&safe)
-	unsafeEnc, _ := binary.Marshal(&unsafe)
+	v := binunsafe.Uint64s(uint64Arr)
+	enc, _ := binary.Marshal(&v)
+	var out binunsafe.Uint64s
 
-	var safeOut []uint64
-	var unsafeOut binunsafe.Uint64s
-
-	b.Run("unsafe/u64-enc",
-		func(int) { binary.Marshal(&unsafe) },
-		func(int) { binary.Marshal(&safe) },
-	)
-	b.Run("unsafe/u64-dec",
-		func(int) { binary.Unmarshal(unsafeEnc, &unsafeOut) },
-		func(int) { binary.Unmarshal(safeEnc, &safeOut) },
-	)
+	b.Run("unsafe/u64-enc", func(int) { binary.Marshal(&v) })
+	b.Run("unsafe/u64-dec", func(int) { binary.Unmarshal(enc, &out) })
 }

@@ -12,21 +12,6 @@ import (
 // Map of all the schemas we've encountered so far
 var schemas = new(sync.Map)
 
-// scanToCache scans the type and caches in the local cache.
-func scanToCache(t reflect.Type, cache map[reflect.Type]Codec) (Codec, error) {
-	if c, ok := cache[t]; ok {
-		return c, nil
-	}
-
-	c, err := scan(t)
-	if err != nil {
-		return nil, err
-	}
-
-	cache[t] = c
-	return c, nil
-}
-
 // Scan gets a codec for the type and uses a cached schema if the type was
 // previously scanned.
 func scan(t reflect.Type) (c Codec, err error) {
@@ -132,8 +117,12 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		if err != nil {
 			return nil, err
 		}
+		packed := uint64(i)
+		if field.PkgPath == "" {
+			packed |= fieldWritable
+		}
 		v = append(v, fieldCodec{
-			Index: i,
+			Field: packed,
 			Codec: codec,
 		})
 	}
@@ -182,7 +171,7 @@ type scannedStruct struct {
 func scanStruct(t reflect.Type) (meta *scannedStruct) {
 	l := t.NumField()
 	meta = new(scannedStruct)
-	for i := 0; i < l; i++ {
+	for i := range l {
 		if t.Field(i).Name != "_" {
 			if t.Field(i).Tag.Get("binary") != "-" {
 				meta.fields = append(meta.fields, i)

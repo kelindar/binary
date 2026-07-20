@@ -40,8 +40,8 @@ type nested struct {
 
 func TestTypes(t *testing.T) {
 	tests := map[string]struct {
-		value interface{}
-		out   interface{}
+		value any
+		out   any
 	}{
 		"composite": {
 			value: composite{
@@ -134,7 +134,7 @@ func TestTypes(t *testing.T) {
 	}
 }
 
-func deref(v interface{}) interface{} {
+func deref(v any) any {
 	switch x := v.(type) {
 	case *composite:
 		return *x

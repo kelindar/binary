@@ -41,7 +41,7 @@ func TestScanner_Custom(t *testing.T) {
 }
 
 func TestScannerComposed(t *testing.T) {
-	codec, err := scan(reflect.TypeOf(Partition{}))
+	codec, err := scan(reflect.TypeFor[Partition]())
 	assert.NoError(t, err)
 	assert.NotNil(t, codec)
 }

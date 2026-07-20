@@ -1,5 +1,4 @@
 //go:build !js
-// +build !js
 
 // Copyright (c) Roman Atachiants and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for details.
@@ -7,7 +6,6 @@
 package binary
 
 import (
-	"reflect"
 	"unsafe"
 )
 
@@ -18,10 +16,7 @@ func ToString(b *[]byte) string {
 
 // ToBytes converts a string to a byte slice without allocating.
 func ToBytes(v string) []byte {
-	strHeader := (*reflect.StringHeader)(unsafe.Pointer(&v))
-	bytesData := unsafe.Slice((*byte)(unsafe.Pointer(strHeader.Data)), len(v))
-
-	return bytesData
+	return unsafe.Slice(unsafe.StringData(v), len(v))
 }
 
 func binaryToBools(b *[]byte) []bool {

@@ -17,3 +17,5 @@ vendor/
 
 # Editors
 .idea
+.DS_Store
+bench/bench.gob copy

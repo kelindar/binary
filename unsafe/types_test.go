@@ -12,8 +12,8 @@ import (
 
 func TestTypes(t *testing.T) {
 	tests := map[string]struct {
-		value interface{}
-		out   interface{}
+		value any
+		out   any
 	}{
 		"bools": {
 			value: Bools{true, false, true, true, false, false},
@@ -64,7 +64,7 @@ func TestTypes(t *testing.T) {
 	}
 }
 
-func deref(v interface{}) interface{} {
+func deref(v any) any {
 	switch x := v.(type) {
 	case *Bools:
 		return *x
