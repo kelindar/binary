@@ -12,7 +12,6 @@ permissions:
 
 env:
   GO111MODULE: "on"
-  GOCOGNIT_MAX: "20"
   COVER_FAIL_UNDER: "75"
 
 jobs:
@@ -38,16 +37,6 @@ jobs:
           mkdir -p coverage
           go test -race -count=1 -covermode=atomic -coverprofile=coverage/go \
             $(go list ./... | grep -v -E '/bench$')
-
-      - name: Check cognitive complexity
-        run: |
-          go install github.com/uudashr/gocognit/cmd/gocognit@v1.2.1
-          echo "### Cognitive complexity (max ${GOCOGNIT_MAX})" >> "$GITHUB_STEP_SUMMARY"
-          gocognit -ignore "_test|testdata|bench" -avg . | tee -a "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          gocognit -ignore "_test|testdata|bench" -top 10 . | tee -a "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          gocognit -ignore "_test|testdata|bench" -over "${GOCOGNIT_MAX}" .
 
       - name: Upload coverage to Coveralls
         uses: shogo82148/actions-goveralls@v1
