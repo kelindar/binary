@@ -82,15 +82,15 @@ func (s *s2) MarshalBinary() (data []byte, err error) {
 
 func TestMarshal(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"time slice":         testMarshalTimeSlice,
-		"nil slice EOF":      testMarshalNilSliceEOF,
-		"simple struct":      testMarshalSimpleStruct,
+		"time slice":          testMarshalTimeSlice,
+		"nil slice EOF":       testMarshalNilSliceEOF,
+		"simple struct":       testMarshalSimpleStruct,
 		"simple struct slice": testMarshalSimpleStructSlice,
-		"complex struct":     testMarshalComplexStruct,
-		"binary marshaler":   testMarshalBinaryMarshaler,
-		"type alias":         testMarshalTypeAlias,
-		"non-pointer value":  testMarshalNonPointer,
-		"big struct":         testMarshalBigStruct,
+		"complex struct":      testMarshalComplexStruct,
+		"binary marshaler":    testMarshalBinaryMarshaler,
+		"type alias":          testMarshalTypeAlias,
+		"non-pointer value":   testMarshalNonPointer,
+		"big struct":          testMarshalBigStruct,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -382,10 +382,10 @@ func testStructSlice(t *testing.T) {
 
 func TestPointer(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"basic types":           testPointerBasicTypes,
-		"pointer of pointer":    testPointerOfPointer,
-		"struct pointer field":  testPointerStructField,
-		"slice of pointers":     testPointerSlice,
+		"basic types":            testPointerBasicTypes,
+		"pointer of pointer":     testPointerOfPointer,
+		"struct pointer field":   testPointerStructField,
+		"slice of pointers":      testPointerSlice,
 		"slice of time pointers": testPointerTimeSlice,
 	}
 	for name, fn := range tests {
@@ -486,7 +486,7 @@ func testPointerBasicTypes(t *testing.T) {
 		}
 	}
 	for _, nilChance := range []float32{.5, 0, 1} {
-		for i := 0; i < 10; i += 1 {
+		for range 10 {
 			btOrig := &BT{}
 			fuzz(btOrig, nilChance)
 			payload, err := Marshal(btOrig)
@@ -612,29 +612,29 @@ func testPointerTimeSlice(t *testing.T) {
 
 func TestFloat(t *testing.T) {
 	tests := map[string]struct {
-		marshal func() (interface{}, []byte, error)
-		unmarshal func([]byte) (interface{}, error)
-		want interface{}
+		marshal   func() (any, []byte, error)
+		unmarshal func([]byte) (any, error)
+		want      any
 	}{
 		"float32": {
-			marshal: func() (interface{}, []byte, error) {
+			marshal: func() (any, []byte, error) {
 				v := float32(1.15)
 				b, err := Marshal(&v)
 				return v, b, err
 			},
-			unmarshal: func(b []byte) (interface{}, error) {
+			unmarshal: func(b []byte) (any, error) {
 				var o float32
 				err := Unmarshal(b, &o)
 				return o, err
 			},
 		},
 		"float64": {
-			marshal: func() (interface{}, []byte, error) {
+			marshal: func() (any, []byte, error) {
 				v := float64(1.15)
 				b, err := Marshal(&v)
 				return v, b, err
 			},
-			unmarshal: func(b []byte) (interface{}, error) {
+			unmarshal: func(b []byte) (any, error) {
 				var o float64
 				err := Unmarshal(b, &o)
 				return o, err

@@ -12,8 +12,8 @@ import (
 
 func TestTypes(t *testing.T) {
 	tests := map[string]struct {
-		value interface{}
-		out   interface{}
+		value any
+		out   any
 	}{
 		"uint16": {
 			value: Uint16s{4, 5, 6, 1, 2, 3},
@@ -56,7 +56,7 @@ func TestTypes(t *testing.T) {
 	}
 }
 
-func deref(v interface{}) interface{} {
+func deref(v any) any {
 	switch x := v.(type) {
 	case *Uint16s:
 		return *x

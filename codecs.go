@@ -30,7 +30,7 @@ type reflectArrayCodec struct {
 // Encode encodes a value into the encoder.
 func (c *reflectArrayCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Type().Len()
-	for i := 0; i < l; i++ {
+	for i := range l {
 		v := reflect.Indirect(rv.Index(i).Addr())
 		if err = c.elemCodec.EncodeTo(e, v); err != nil {
 			return
@@ -42,7 +42,7 @@ func (c *reflectArrayCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 // Decode decodes into a reflect value from the decoder.
 func (c *reflectArrayCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	l := rv.Type().Len()
-	for i := 0; i < l; i++ {
+	for i := range l {
 		v := reflect.Indirect(rv.Index(i))
 		if err = c.elemCodec.DecodeTo(d, v); err != nil {
 			return
@@ -61,7 +61,7 @@ type reflectSliceCodec struct {
 func (c *reflectSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	e.WriteUvarint(uint64(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		v := reflect.Indirect(rv.Index(i).Addr())
 		if err = c.elemCodec.EncodeTo(e, v); err != nil {
 			return
@@ -96,7 +96,7 @@ type reflectSliceOfPtrCodec struct {
 func (c *reflectSliceOfPtrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	e.WriteUvarint(uint64(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		v := rv.Index(i)
 		e.writeBool(v.IsNil())
 		if !v.IsNil() {
@@ -189,7 +189,7 @@ type varintSliceCodec struct{}
 func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	e.WriteUvarint(uint64(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		e.WriteVarint(rv.Index(i).Int())
 	}
 	return
@@ -218,7 +218,7 @@ type varuintSliceCodec struct{}
 func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	e.WriteUvarint(uint64(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		e.WriteUvarint(rv.Index(i).Uint())
 	}
 	return

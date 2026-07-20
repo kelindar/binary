@@ -58,7 +58,7 @@ func (s Uint16s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Uint16s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Uint16s{}),
+		sliceType: reflect.TypeFor[Uint16s](),
 		sizeOfInt: 2,
 	}
 }
@@ -75,7 +75,7 @@ func (s Int16s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Int16s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Int16s{}),
+		sliceType: reflect.TypeFor[Int16s](),
 		sizeOfInt: 2,
 	}
 }
@@ -92,7 +92,7 @@ func (s Uint32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Uint32s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Uint32s{}),
+		sliceType: reflect.TypeFor[Uint32s](),
 		sizeOfInt: 4,
 	}
 }
@@ -109,7 +109,7 @@ func (s Int32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Int32s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Int32s{}),
+		sliceType: reflect.TypeFor[Int32s](),
 		sizeOfInt: 4,
 	}
 }
@@ -126,7 +126,7 @@ func (s Uint64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Uint64s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Uint64s{}),
+		sliceType: reflect.TypeFor[Uint64s](),
 		sizeOfInt: 8,
 	}
 }
@@ -143,7 +143,7 @@ func (s Int64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Int64s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Int64s{}),
+		sliceType: reflect.TypeFor[Int64s](),
 		sizeOfInt: 8,
 	}
 }
@@ -160,7 +160,7 @@ func (s Float32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Float32s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Float32s{}),
+		sliceType: reflect.TypeFor[Float32s](),
 		sizeOfInt: 4,
 	}
 }
@@ -177,7 +177,7 @@ func (s Float64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Float64s) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{
-		sliceType: reflect.TypeOf(Float64s{}),
+		sliceType: reflect.TypeFor[Float64s](),
 		sizeOfInt: 8,
 	}
 }

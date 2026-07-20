@@ -182,7 +182,7 @@ type scannedStruct struct {
 func scanStruct(t reflect.Type) (meta *scannedStruct) {
 	l := t.NumField()
 	meta = new(scannedStruct)
-	for i := 0; i < l; i++ {
+	for i := range l {
 		if t.Field(i).Name != "_" {
 			if t.Field(i).Tag.Get("binary") != "-" {
 				meta.fields = append(meta.fields, i)
