@@ -4,6 +4,7 @@
 package nocopy
 
 import (
+	"encoding/json"
 	"reflect"
 	"unsafe"
 
@@ -31,6 +32,27 @@ type Bytes []byte
 
 // GetBinaryCodec retrieves a custom binary codec.
 func (s *Bytes) GetBinaryCodec() binary.Codec {
+	return new(byteSliceCodec)
+}
+
+// ------------------------------------------------------------------------------
+
+// JSON represents raw JSON. JSON decoding copies its input, while binary
+// decoding reuses the underlying byte array.
+type JSON json.RawMessage
+
+// MarshalJSON returns j as the JSON encoding of j.
+func (j JSON) MarshalJSON() ([]byte, error) {
+	return json.RawMessage(j).MarshalJSON()
+}
+
+// UnmarshalJSON sets *j to a copy of data.
+func (j *JSON) UnmarshalJSON(data []byte) error {
+	return (*json.RawMessage)(j).UnmarshalJSON(data)
+}
+
+// GetBinaryCodec retrieves a custom binary codec.
+func (j *JSON) GetBinaryCodec() binary.Codec {
 	return new(byteSliceCodec)
 }
 
