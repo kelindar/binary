@@ -156,7 +156,6 @@ func (r *sliceReader) Reset(b []byte) {
 // streamReader represents a reader implementation for a generic reader (i.e. streams)
 type streamReader struct {
 	Reader
-	scratch [10]byte
 }
 
 // Reader represents the interface a reader should implement.
@@ -179,12 +178,7 @@ func newStreamReader(r io.Reader) *streamReader {
 
 // Slice selects a sub-slice of next bytes.
 func (r *streamReader) Slice(n int) (buffer []byte, err error) {
-	if n <= 10 {
-		buffer = r.scratch[:n]
-	} else {
-		buffer = make([]byte, n, n)
-	}
-
+	buffer = make([]byte, n)
 	_, err = io.ReadFull(r, buffer)
 	return
 }
