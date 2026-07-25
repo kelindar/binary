@@ -5,11 +5,33 @@ package nocopy
 
 import (
 	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/kelindar/binary"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestJSON(t *testing.T) {
+	input := []byte(`{"answer":42}`)
+	var value JSON
+	assert.NoError(t, json.Unmarshal(input, &value))
+	input[2] = 'x'
+	assert.JSONEq(t, `{"answer":42}`, string(value))
+
+	output, err := json.Marshal(struct {
+		Value JSON `json:"value"`
+	}{Value: value})
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"value":{"answer":42}}`, string(output))
+
+	encoded, err := binary.Marshal(value)
+	assert.NoError(t, err)
+	var decoded JSON
+	assert.NoError(t, binary.Unmarshal(encoded, &decoded))
+	encoded[len(encoded)-1] = '!'
+	assert.Equal(t, byte('!'), decoded[len(decoded)-1])
+}
 
 func TestStreamDecodeRetainsStrings(t *testing.T) {
 	type pair struct {
@@ -97,6 +119,10 @@ func TestTypes(t *testing.T) {
 			value: Bytes([]byte("ABCD")),
 			out:   new(Bytes),
 		},
+		"json": {
+			value: JSON(`{"answer":42}`),
+			out:   new(JSON),
+		},
 		"bools": {
 			value: Bools{true, false, true, true, false, false},
 			out:   new(Bools),
@@ -163,6 +189,8 @@ func deref(v any) any {
 	case *String:
 		return *x
 	case *Bytes:
+		return *x
+	case *JSON:
 		return *x
 	case *Bools:
 		return *x
