@@ -230,8 +230,8 @@ type unionImage struct {
 }
 
 type unionPayload struct {
-	Text  *unionText  `binary:"1"`
-	Image *unionImage `binary:"2"`
+	Text  *unionText  `binary:"1,union"`
+	Image *unionImage `binary:"2,union"`
 }
 
 type unionEnvelope struct {

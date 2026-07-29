@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -130,7 +131,16 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			continue
 		}
 
-		id, err := strconv.ParseUint(tag, 10, 64)
+		value, option, ok := strings.Cut(tag, ",")
+		if !ok {
+			hasPlain = true
+			continue
+		}
+		if option != "union" {
+			return nil, errors.New("binary: invalid tag " + strconv.Quote(tag) + " on " + t.String())
+		}
+
+		id, err := strconv.ParseUint(value, 10, 64)
 		switch {
 		case err != nil || id == 0 || id > maxUnionTag:
 			return nil, errors.New("binary: invalid tag " + strconv.Quote(tag) + " on " + t.String())

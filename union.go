@@ -42,40 +42,10 @@ func (c *reflectUnionCodec) lookup(tag uint64) *unionArm {
 }
 
 func (c *reflectUnionCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	var (
-		selected *unionArm
-		elem     reflect.Value
-	)
-
-	if rv.CanAddr() {
-		base := unsafe.Pointer(rv.UnsafeAddr())
-		for i := range c.arms {
-			arm := &c.arms[i]
-			p := *(*unsafe.Pointer)(unsafe.Add(base, arm.offset))
-			if p == nil {
-				continue
-			}
-			if selected != nil {
-				return ErrMultipleArms
-			}
-			selected = arm
-			elem = reflect.NewAt(arm.elem, p).Elem()
-		}
-	} else {
-		for i := range c.arms {
-			arm := &c.arms[i]
-			f := rv.Field(arm.index)
-			if f.IsNil() {
-				continue
-			}
-			if selected != nil {
-				return ErrMultipleArms
-			}
-			selected = arm
-			elem = f.Elem()
-		}
+	selected, elem := c.findArm(rv)
+	if selected == &errArm {
+		return ErrMultipleArms
 	}
-
 	if selected == nil {
 		e.WriteTagged(0, nil)
 		return e.err
@@ -100,6 +70,58 @@ func (c *reflectUnionCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	return e.err
 }
 
+func (c *reflectUnionCodec) findArm(rv reflect.Value) (*unionArm, reflect.Value) {
+	if rv.CanAddr() {
+		return c.findArmUnsafe(rv)
+	}
+	return c.findArmReflect(rv)
+}
+
+func (c *reflectUnionCodec) findArmUnsafe(rv reflect.Value) (*unionArm, reflect.Value) {
+	base := unsafe.Pointer(rv.UnsafeAddr())
+	var (
+		selected *unionArm
+		elem     reflect.Value
+	)
+	for i := range c.arms {
+		arm := &c.arms[i]
+		p := *(*unsafe.Pointer)(unsafe.Add(base, arm.offset))
+		if p == nil {
+			continue
+		}
+		if selected != nil {
+			return &errArm, reflect.Value{}
+		}
+		selected = arm
+		elem = reflect.NewAt(arm.elem, p).Elem()
+	}
+	return selected, elem
+}
+
+func (c *reflectUnionCodec) findArmReflect(rv reflect.Value) (*unionArm, reflect.Value) {
+	var (
+		selected *unionArm
+		elem     reflect.Value
+	)
+	for i := range c.arms {
+		arm := &c.arms[i]
+		f := rv.Field(arm.index)
+		if f.IsNil() {
+			continue
+		}
+		if selected != nil {
+			return &errArm, reflect.Value{}
+		}
+		selected = arm
+		elem = f.Elem()
+	}
+	return selected, elem
+}
+
+// errArm is a sentinel used by findArm to signal ErrMultipleArms without
+// allocating; EncodeTo checks for it by pointer.
+var errArm = unionArm{}
+
 func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	tag, body, err := d.ReadTagged()
 	if err != nil {
@@ -107,57 +129,44 @@ func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	}
 
 	arm := c.lookup(tag)
-	// tag 0 (none) and unknown versions both leave all arms nil
 	if arm == nil {
-		c.clear(rv)
+		c.clearValue(rv)
 		return nil
 	}
 
 	var ptr reflect.Value
 	if rv.CanAddr() {
 		base := unsafe.Pointer(rv.UnsafeAddr())
-		p := *(*unsafe.Pointer)(unsafe.Add(base, arm.offset))
-		c.clear(rv)
-		if p != nil {
+		if p := *(*unsafe.Pointer)(unsafe.Add(base, arm.offset)); p != nil {
 			ptr = reflect.NewAt(arm.elem, p)
-			*(*unsafe.Pointer)(unsafe.Add(base, arm.offset)) = p
 		}
+		c.clearUnsafe(base)
 	} else {
-		field := rv.Field(arm.index)
-		if !field.IsNil() {
-			ptr = field
-		}
-		c.clear(rv)
-		if ptr.IsValid() {
-			field.Set(ptr)
-		}
+		c.clearValue(rv)
 	}
 
 	if !ptr.IsValid() {
 		ptr = reflect.New(arm.elem)
 	}
 	if err = c.decodeArm(arm.codec, body, ptr.Elem()); err != nil {
-		c.clear(rv)
 		return err
 	}
 
 	if rv.CanAddr() {
-		base := unsafe.Pointer(rv.UnsafeAddr())
-		*(*unsafe.Pointer)(unsafe.Add(base, arm.offset)) = ptr.UnsafePointer()
-		return nil
+		*(*unsafe.Pointer)(unsafe.Add(unsafe.Pointer(rv.UnsafeAddr()), arm.offset)) = ptr.UnsafePointer()
+	} else {
+		rv.Field(arm.index).Set(ptr)
 	}
-	rv.Field(arm.index).Set(ptr)
 	return nil
 }
 
-func (c *reflectUnionCodec) clear(rv reflect.Value) {
-	if rv.CanAddr() {
-		base := unsafe.Pointer(rv.UnsafeAddr())
-		for i := range c.arms {
-			*(*unsafe.Pointer)(unsafe.Add(base, c.arms[i].offset)) = nil
-		}
-		return
+func (c *reflectUnionCodec) clearUnsafe(base unsafe.Pointer) {
+	for i := range c.arms {
+		*(*unsafe.Pointer)(unsafe.Add(base, c.arms[i].offset)) = nil
 	}
+}
+
+func (c *reflectUnionCodec) clearValue(rv reflect.Value) {
 	for i := range c.arms {
 		rv.Field(c.arms[i].index).Set(reflect.Zero(rv.Field(c.arms[i].index).Type()))
 	}
