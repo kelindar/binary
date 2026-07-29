@@ -250,15 +250,15 @@ func runBinaryUnion(b *bench.B) {
 	enc, _ := binary.Marshal(&v)
 	var out unionPayload
 
-	b.Run("binary/union-enc", func(int) { binary.Marshal(&v) })
-	b.Run("binary/union-dec", func(int) { binary.Unmarshal(enc, &out) })
+	b.Run("union/enc", func(int) { binary.Marshal(&v) })
+	b.Run("union/dec", func(int) { binary.Unmarshal(enc, &out) })
 
 	env := unionEnvelope{ID: 42, Body: v}
 	envEnc, _ := binary.Marshal(&env)
 	var envOut unionEnvelope
 
-	b.Run("binary/union-nest-enc", func(int) { binary.Marshal(&env) })
-	b.Run("binary/union-nest-dec", func(int) { binary.Unmarshal(envEnc, &envOut) })
+	b.Run("union/nest-enc", func(int) { binary.Marshal(&env) })
+	b.Run("union/nest-dec", func(int) { binary.Unmarshal(envEnc, &envOut) })
 
 	var buf bytes.Buffer
 	encoder := binary.NewEncoder(&buf)
@@ -268,12 +268,12 @@ func runBinaryUnion(b *bench.B) {
 	decoder := binary.NewDecoder(reader)
 	_ = decoder.Decode(&out)
 
-	b.Run("binary/union-reuse-enc", func(int) {
+	b.Run("union/reuse-enc", func(int) {
 		buf.Reset()
 		encoder.Reset(&buf)
 		_ = encoder.Encode(&v)
 	})
-	b.Run("binary/union-stream-dec", func(int) {
+	b.Run("union/stream-dec", func(int) {
 		reader.Reset(enc)
 		_ = decoder.Decode(&out)
 	})
