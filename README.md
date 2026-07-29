@@ -1,7 +1,6 @@
 <p align="center">
 <img src="https://img.shields.io/github/go-mod/go-version/kelindar/binary" alt="Go Version">
 <a href="https://pkg.go.dev/github.com/kelindar/binary"><img src="https://pkg.go.dev/badge/github.com/kelindar/binary" alt="PkgGoDev"></a>
-<a href="https://goreportcard.com/report/github.com/kelindar/binary"><img src="https://goreportcard.com/badge/github.com/kelindar/binary" alt="Go Report Card"></a>
 <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
 </p>
 
