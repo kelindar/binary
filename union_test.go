@@ -5,6 +5,7 @@ package binary
 
 import (
 	"bytes"
+	stdbinary "encoding/binary"
 	"errors"
 	"reflect"
 	"sync"
@@ -109,6 +110,15 @@ func TestUnion(t *testing.T) {
 		assert.Equal(t, &imagePayload{Width: 3, Height: 4}, out.Image)
 	})
 
+	t.Run("reuses selected arm", func(t *testing.T) {
+		out := payload{Image: &imagePayload{}}
+		previous := out.Image
+		b, err := Marshal(payload{Image: &imagePayload{Width: 3, Height: 4}})
+		assert.NoError(t, err)
+		assert.NoError(t, Unmarshal(b, &out))
+		assert.True(t, previous == out.Image)
+	})
+
 	t.Run("nested", func(t *testing.T) {
 		in := envelope{ID: 42, Body: payload{Image: &imagePayload{Width: 10, Height: 20}}}
 		b, err := Marshal(in)
@@ -121,7 +131,7 @@ func TestUnion(t *testing.T) {
 
 	t.Run("skip tag", func(t *testing.T) {
 		in := payloadWithSkip{Text: &textPayload{Msg: "ok"}}
-		b, err := Marshal(in)
+		b, err := Marshal(&in)
 		assert.NoError(t, err)
 
 		var out payloadWithSkip
@@ -223,4 +233,8 @@ func TestTagged(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, uint64(7), tag)
 	assert.Equal(t, []byte("abc"), body)
+
+	oversized := append([]byte{1}, stdbinary.AppendUvarint(nil, ^uint64(0))...)
+	var out payload
+	assert.Error(t, Unmarshal(oversized, &out))
 }

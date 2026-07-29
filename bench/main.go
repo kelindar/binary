@@ -273,7 +273,7 @@ func runBinaryUnion(b *bench.B) {
 		encoder.Reset(&buf)
 		_ = encoder.Encode(&v)
 	})
-	b.Run("binary/union-reuse-dec", func(int) {
+	b.Run("binary/union-stream-dec", func(int) {
 		reader.Reset(enc)
 		_ = decoder.Decode(&out)
 	})

@@ -106,21 +106,44 @@ func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		return err
 	}
 
-	c.clear(rv)
 	arm := c.lookup(tag)
 	// tag 0 (none) and unknown versions both leave all arms nil
 	if arm == nil {
+		c.clear(rv)
 		return nil
 	}
 
-	ptr := reflect.New(arm.elem)
+	var ptr reflect.Value
+	if rv.CanAddr() {
+		base := unsafe.Pointer(rv.UnsafeAddr())
+		p := *(*unsafe.Pointer)(unsafe.Add(base, arm.offset))
+		c.clear(rv)
+		if p != nil {
+			ptr = reflect.NewAt(arm.elem, p)
+			*(*unsafe.Pointer)(unsafe.Add(base, arm.offset)) = p
+		}
+	} else {
+		field := rv.Field(arm.index)
+		if !field.IsNil() {
+			ptr = field
+		}
+		c.clear(rv)
+		if ptr.IsValid() {
+			field.Set(ptr)
+		}
+	}
+
+	if !ptr.IsValid() {
+		ptr = reflect.New(arm.elem)
+	}
 	if err = c.decodeArm(arm.codec, body, ptr.Elem()); err != nil {
+		c.clear(rv)
 		return err
 	}
 
 	if rv.CanAddr() {
 		base := unsafe.Pointer(rv.UnsafeAddr())
-		*(*unsafe.Pointer)(unsafe.Add(base, arm.offset)) = unsafe.Pointer(ptr.Pointer())
+		*(*unsafe.Pointer)(unsafe.Add(base, arm.offset)) = ptr.UnsafePointer()
 		return nil
 	}
 	rv.Field(arm.index).Set(ptr)

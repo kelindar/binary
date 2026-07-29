@@ -161,7 +161,17 @@ func (d *Decoder) readComplex128() (out complex128, err error) {
 // returns a sub-slice pointing to the same array. Since this requires access
 // to the underlying data, this is only available for a slice reader.
 func (d *Decoder) Slice(n int) ([]byte, error) {
+	if n < 0 {
+		return nil, io.ErrUnexpectedEOF
+	}
 	return d.reader.Slice(n)
+}
+
+func (d *Decoder) readSlice(n uint64) ([]byte, error) {
+	if n > uint64(^uint(0)>>1) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return d.Slice(int(n))
 }
 
 // ReadSlice reads a varint prefixed sub-slice without copying and returns the underlying
@@ -169,7 +179,7 @@ func (d *Decoder) Slice(n int) ([]byte, error) {
 func (d *Decoder) ReadSlice() (b []byte, err error) {
 	var l uint64
 	if l, err = d.ReadUvarint(); err == nil {
-		b, err = d.Slice(int(l))
+		b, err = d.readSlice(l)
 	}
 	return
 }
@@ -186,6 +196,6 @@ func (d *Decoder) ReadTagged() (tag uint64, body []byte, err error) {
 	if l, err = d.ReadUvarint(); err != nil {
 		return
 	}
-	body, err = d.Slice(int(l))
+	body, err = d.readSlice(l)
 	return
 }
