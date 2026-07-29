@@ -1,7 +1,6 @@
 <p align="center">
 <img src="https://img.shields.io/github/go-mod/go-version/kelindar/binary" alt="Go Version">
 <a href="https://pkg.go.dev/github.com/kelindar/binary"><img src="https://pkg.go.dev/badge/github.com/kelindar/binary" alt="PkgGoDev"></a>
-<a href="https://goreportcard.com/report/github.com/kelindar/binary"><img src="https://goreportcard.com/badge/github.com/kelindar/binary" alt="Go Report Card"></a>
 <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
 </p>
 
@@ -18,15 +17,17 @@ This package contains a **high-performance binary serializer** for Go that encod
 - **Fast paths** for `[]byte` and other common slice types.
 - **Custom serialization** via `encoding.BinaryMarshaler` / `BinaryUnmarshaler` or a full `Codec` through `GetBinaryCodec`.
 - **Field skipping** with the `binary:"-"` struct tag.
+- **Tagged unions** (oneof / versioning) via `binary:"N,union"` tags on pointer fields.
 - Optional subpackages for **sorted**, **unsafe**, and **nocopy** typed slices when you need smaller payloads or lower decode cost.
 
 ## Documentation
 
-Variable-sized values are prefixed with a varint-encoded size and encoded recursively. The format is intentionally not versioned or cross-language — this is for efficient exchange of known Go types between systems you control.
+Variable-sized values are prefixed with a varint-encoded size and encoded recursively. The default sequential format is not self-describing or automatically versioned; tagged unions provide explicit, user-managed versioning. The format is Go-specific and intended for systems you control.
 
 - [Quick Start](#quick-start)
 - [Streaming Encode and Decode](#streaming-encode-and-decode)
 - [Skipping Fields](#skipping-fields)
+- [Tagged Unions](#tagged-unions)
 - [Custom Serialization](#custom-serialization)
 - [Typed Slice Subpackages](#typed-slice-subpackages)
 - [Benchmarks](#benchmarks)
@@ -90,6 +91,82 @@ type Cache struct {
 	Value []byte
 }
 ```
+
+## Tagged Unions
+
+A struct whose included fields all use `binary:"N,union"` tags (`N` in `1..255`) is encoded as a **tagged union** (oneof / versioning):
+
+```text
+uvarint(tag) + uvarint(len) + body
+```
+
+Arms must be pointers and tags must be unique. Exactly one may be non-nil on encode; all nil writes tag `0` with an empty body. Unknown tags are skipped on decode (forward-compatible versioning).
+
+### Oneof
+
+```go
+type Payload struct {
+	Text  *TextPayload  `binary:"1,union"`
+	Image *ImagePayload `binary:"2,union"`
+}
+
+encoded, err := binary.Marshal(Payload{Text: &TextPayload{Msg: "hi"}})
+
+var out Payload
+err = binary.Unmarshal(encoded, &out)
+// out.Text != nil
+```
+
+### Versioning
+
+Use one arm per schema version. Older readers ignore newer tags; newer readers still decode older payloads:
+
+```go
+type DocV1 struct {
+	Title string
+}
+
+type DocV2 struct {
+	Title string
+	Body  string
+}
+
+type Doc struct {
+	V1 *DocV1 `binary:"1,union"`
+	V2 *DocV2 `binary:"2,union"`
+}
+
+var ErrUnknownVersion = errors.New("unknown document version")
+
+// Current returns the latest representation, migrating older versions explicitly.
+func (d Doc) Current() (DocV2, error) {
+	switch {
+	case d.V2 != nil:
+		return *d.V2, nil
+	case d.V1 != nil:
+		return DocV2{Title: d.V1.Title}, nil
+	default:
+		return DocV2{}, ErrUnknownVersion
+	}
+}
+
+// Writer on the new version
+encoded, err := binary.Marshal(Doc{V2: &DocV2{Title: "hi", Body: "world"}})
+
+// Reader that only knows V1 still succeeds: unknown tag 2 is skipped
+var legacy struct {
+	V1 *DocV1 `binary:"1,union"`
+}
+err = binary.Unmarshal(encoded, &legacy)
+// legacy.V1 == nil — body was skipped, no error
+
+// Reader that knows both picks the matching arm
+var current Doc
+err = binary.Unmarshal(encoded, &current)
+latest, err := current.Current()
+```
+
+Nest a union inside a normal sequential struct as a single field. For hand-rolled codecs, use `Encoder.WriteTagged` / `Decoder.ReadTagged` with the same framing.
 
 ## Custom Serialization
 
@@ -225,49 +302,57 @@ cd bench && go run .
 ```
 name                 time/op      ops/s        allocs/op
 -------------------- ------------ ------------ ------------
-binary/enc           139.2 ns     7.2M         2
-binary/enc-to        104.7 ns     9.5M         0
-binary/dec           175.6 ns     5.7M         5
-binary/map-enc       9.5 µs       105.2K       210
-binary/map-dec       14.4 µs      69.4K        511
-binary/slice-enc     9.4 µs       106.5K       9
-binary/slice-dec     14.9 µs      67.2K        502
-binary/nest-enc      5.0 µs       201.9K       14
-binary/nest-dec      8.3 µs       120.8K       271
-binary/bytes-enc     835.2 ns     1.2M         3
-binary/bytes-dec     821.2 ns     1.2M         2
-binary/u64-enc       75.3 µs      13.3K        11
-binary/u64-dec       58.4 µs      17.1K        2
-binary/reuse-enc     113.2 ns     8.8M         0
-binary/stream-dec    240.8 ns     4.2M         5
-nocopy/str-enc       109.7 ns     9.1M         3
-nocopy/str-dec       39.2 ns      25.5M        0
-nocopy/dict-enc      185.7 ns     5.4M         2
-nocopy/dict-dec      154.5 ns     6.5M         2
-nocopy/bmap-enc      313.3 ns     3.2M         5
-nocopy/bmap-dec      160.9 ns     6.2M         2
-nocopy/hmap-enc      307.6 ns     3.3M         5
-nocopy/hmap-dec      146.6 ns     6.8M         2
-nocopy/bytes-enc     862.0 ns     1.2M         3
-nocopy/bytes-dec     41.6 ns      24.0M        0
-nocopy/u64-enc       5.3 µs       187.6K       3
-nocopy/u64-dec       39.8 ns      25.1M        0
-nocopy/col-enc       524.3 ns     1.9M         9
-nocopy/col-dec       532.2 ns     1.9M         8
-nocopy/struct-enc    162.9 ns     6.1M         3
-nocopy/struct-dec    82.7 ns      12.1M        0
-sorted/i32-enc       78.9 µs      12.7K        5
-sorted/i32-dec       551.8 µs     1.8K         29.8K
-sorted/u32-enc       76.2 µs      13.1K        5
-sorted/u32-dec       543.5 µs     1.8K         29.8K
-sorted/ts-enc        52.5 µs      19.0K        6
-sorted/ts-dec        21.8 µs      45.8K        2
-sorted/tsz-enc       126.4 µs     7.9K         7
-sorted/tsz-dec       119.3 µs     8.4K         3
-sorted/tcz-enc       85.9 µs      11.6K        6
-sorted/tcz-dec       76.1 µs      13.1K        3
-unsafe/u64-enc       459.8 ns     2.2M         3
-unsafe/u64-dec       450.1 ns     2.2M         2
+binary/enc           122.6 ns     8.2M         2
+binary/enc-to        89.0 ns      11.2M        0
+binary/dec           90.1 ns      11.1M        1
+binary/map-enc       8.5 µs       117.4K       209
+binary/map-dec       12.8 µs      78.1K        500
+binary/slice-enc     8.0 µs       124.3K       9
+binary/slice-dec     6.6 µs       151.4K       100
+binary/nest-enc      4.2 µs       236.1K       13
+binary/nest-dec      3.7 µs       270.0K       63
+binary/bytes-enc     812.2 ns     1.2M         3
+binary/bytes-dec     172.5 ns     5.8M         0
+binary/u64-enc       42.4 µs      23.6K        3
+binary/u64-dec       57.6 µs      17.4K        0
+binary/reuse-enc     95.7 ns      10.5M        0
+binary/stream-dec    147.4 ns     6.8M         2
+binary/trace-enc     12.6 µs      79.2K        9
+binary/trace-dec     13.0 µs      76.7K        640
+union/enc            196.6 ns     5.1M         3
+union/dec            100.7 ns     9.9M         0
+union/nest-enc       213.3 ns     4.7M         3
+union/nest-dec       110.4 ns     9.1M         0
+union/reuse-enc      98.3 ns      10.2M        0
+union/stream-dec     132.9 ns     7.5M         1
+nocopy/str-enc       107.6 ns     9.3M         3
+nocopy/str-dec       34.8 ns      28.8M        0
+nocopy/dict-enc      183.7 ns     5.4M         2
+nocopy/dict-dec      155.5 ns     6.4M         2
+nocopy/bmap-enc      322.4 ns     3.1M         5
+nocopy/bmap-dec      161.9 ns     6.2M         2
+nocopy/hmap-enc      320.1 ns     3.1M         5
+nocopy/hmap-dec      143.9 ns     7.0M         2
+nocopy/bytes-enc     841.1 ns     1.2M         3
+nocopy/bytes-dec     35.8 ns      28.0M        0
+nocopy/u64-enc       5.4 µs       186.9K       3
+nocopy/u64-dec       32.0 ns      31.2M        0
+nocopy/col-enc       504.2 ns     2.0M         8
+nocopy/col-dec       359.0 ns     2.8M         6
+nocopy/struct-enc    161.0 ns     6.2M         3
+nocopy/struct-dec    72.4 ns      13.8M        0
+sorted/i32-enc       81.7 µs      12.2K        5
+sorted/i32-dec       57.6 µs      17.4K        0
+sorted/u32-enc       78.8 µs      12.7K        5
+sorted/u32-dec       51.3 µs      19.5K        0
+sorted/ts-enc        51.4 µs      19.4K        6
+sorted/ts-dec        22.8 µs      43.9K        2
+sorted/tsz-enc       129.7 µs     7.7K         7
+sorted/tsz-dec       132.0 µs     7.6K         3
+sorted/tcz-enc       86.9 µs      11.5K        6
+sorted/tcz-dec       79.2 µs      12.6K        3
+unsafe/u64-enc       483.4 ns     2.1M         3
+unsafe/u64-dec       463.0 ns     2.2M         2
 ```
 
 ## Disclaimer

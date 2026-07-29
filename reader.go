@@ -105,7 +105,7 @@ func (r *sliceReader) ReadByte() (byte, error) {
 // returns a sub-slice pointing to the same array. Since this requires access
 // to the underlying data, this is only available for our default reader.
 func (r *sliceReader) Slice(n int) ([]byte, error) {
-	if r.offset+int64(n) > int64(len(r.buffer)) {
+	if uint64(n) > uint64(len(r.buffer))-uint64(r.offset) {
 		return nil, io.EOF
 	}
 

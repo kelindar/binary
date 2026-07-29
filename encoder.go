@@ -190,3 +190,13 @@ func (e *Encoder) WriteString(v string) {
 	e.WriteUvarint(uint64(len(v)))
 	e.Write(ToBytes(v))
 }
+
+// WriteTagged writes a length-prefixed tagged payload as uvarint(tag) +
+// uvarint(len) + body. Used for oneof/versioning unions.
+func (e *Encoder) WriteTagged(tag uint64, body []byte) {
+	e.WriteUvarint(tag)
+	e.WriteUvarint(uint64(len(body)))
+	if len(body) > 0 {
+		e.Write(body)
+	}
+}

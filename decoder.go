@@ -161,7 +161,17 @@ func (d *Decoder) readComplex128() (out complex128, err error) {
 // returns a sub-slice pointing to the same array. Since this requires access
 // to the underlying data, this is only available for a slice reader.
 func (d *Decoder) Slice(n int) ([]byte, error) {
+	if n < 0 {
+		return nil, io.ErrUnexpectedEOF
+	}
 	return d.reader.Slice(n)
+}
+
+func (d *Decoder) readSlice(n uint64) ([]byte, error) {
+	if n > uint64(^uint(0)>>1) {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return d.reader.Slice(int(n))
 }
 
 // ReadSlice reads a varint prefixed sub-slice without copying and returns the underlying
@@ -169,7 +179,23 @@ func (d *Decoder) Slice(n int) ([]byte, error) {
 func (d *Decoder) ReadSlice() (b []byte, err error) {
 	var l uint64
 	if l, err = d.ReadUvarint(); err == nil {
-		b, err = d.Slice(int(l))
+		b, err = d.readSlice(l)
 	}
+	return
+}
+
+// ReadTagged reads a length-prefixed tagged payload written by WriteTagged.
+// On the slice/buffer path, body aliases the decoder input and is valid only
+// until the next read on this Decoder; copy it to retain. On a stream path,
+// body is an owned copy.
+func (d *Decoder) ReadTagged() (tag uint64, body []byte, err error) {
+	if tag, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	body, err = d.readSlice(l)
 	return
 }

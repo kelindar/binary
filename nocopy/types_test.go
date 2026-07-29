@@ -33,20 +33,6 @@ func TestJSON(t *testing.T) {
 	assert.Equal(t, byte('!'), decoded[len(decoded)-1])
 }
 
-func TestStreamDecodeRetainsStrings(t *testing.T) {
-	type pair struct {
-		First  String
-		Second String
-	}
-
-	want := pair{First: "first", Second: "second"}
-	data, err := binary.Marshal(want)
-	assert.NoError(t, err)
-
-	var got pair
-	assert.NoError(t, binary.NewDecoder(bytes.NewReader(data)).Decode(&got))
-	assert.Equal(t, want, got)
-}
 
 type composite map[string]column
 
@@ -174,6 +160,20 @@ func TestTypes(t *testing.T) {
 			assert.Equal(t, tc.value, deref(tc.out))
 		})
 	}
+
+	t.Run("stream decode retains strings", func(t *testing.T) {
+		type pair struct {
+			First  String
+			Second String
+		}
+		want := pair{First: "first", Second: "second"}
+		data, err := binary.Marshal(want)
+		assert.NoError(t, err)
+
+		var got pair
+		assert.NoError(t, binary.NewDecoder(bytes.NewReader(data)).Decode(&got))
+		assert.Equal(t, want, got)
+	})
 }
 
 func deref(v any) any {

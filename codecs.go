@@ -292,10 +292,10 @@ func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error)
 // Decode decodes into a reflect value from the decoder.
 func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	isNil, err := d.ReadBool()
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
-	}
-	if isNil {
+	case isNil:
 		return
 	}
 

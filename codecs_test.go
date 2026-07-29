@@ -774,6 +774,165 @@ func testPointerTimeSlice(t *testing.T) {
 	assert.Equal(t, v, o)
 }
 
+func TestStructUintComplex(t *testing.T) {
+	type allTypes struct {
+		U   uint
+		C64 complex64
+		C128 complex128
+	}
+	in := allTypes{U: 42, C64: 1 + 2i, C128: 3 + 4i}
+	b, err := Marshal(&in)
+	assert.NoError(t, err)
+
+	var out allTypes
+	assert.NoError(t, Unmarshal(b, &out))
+	assert.Equal(t, in, out)
+
+	// By-value (non-addressable) exercises the reflect fallback encode path
+	b2, err := Marshal(in)
+	assert.NoError(t, err)
+
+	var out2 allTypes
+	assert.NoError(t, Unmarshal(b2, &out2))
+	assert.Equal(t, in, out2)
+}
+
+func TestStructReflectPath(t *testing.T) {
+	// Struct with non-primitive fields forces the reflect fallback encode/decode path.
+	type inner struct {
+		Items []string
+		Tags  map[string]int
+	}
+	type outer struct {
+		Name  string
+		Inner inner
+	}
+
+	// Encode by value (non-addressable) to exercise the reflect-path encode
+	in := outer{Name: "hi", Inner: inner{
+		Items: []string{"a", "b"},
+		Tags:  map[string]int{"x": 1},
+	}}
+	b, err := Marshal(in)
+	assert.NoError(t, err)
+
+	var out outer
+	assert.NoError(t, Unmarshal(b, &out))
+	assert.Equal(t, in, out)
+}
+
+func TestStructSkippedField(t *testing.T) {
+	type withSkip struct {
+		_    int `binary:"-"`
+		Name string
+		Skip int `binary:"-"`
+		Val  uint
+	}
+	in := withSkip{Name: "test", Val: 42}
+	b, err := Marshal(&in)
+	assert.NoError(t, err)
+
+	var out withSkip
+	assert.NoError(t, Unmarshal(b, &out))
+	assert.Equal(t, in.Name, out.Name)
+	assert.Equal(t, in.Val, out.Val)
+}
+
+func TestSliceEncodeError(t *testing.T) {
+	// varint slice with items
+	v := []int64{1, 2, 3, 4, 5}
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+
+	var out []int64
+	assert.NoError(t, Unmarshal(b, &out))
+	assert.Equal(t, v, out)
+
+	// varuint slice
+	v2 := []uint64{10, 20, 30}
+	b2, err := Marshal(&v2)
+	assert.NoError(t, err)
+
+	var out2 []uint64
+	assert.NoError(t, Unmarshal(b2, &out2))
+	assert.Equal(t, v2, out2)
+}
+
+func TestMapEncodeError(t *testing.T) {
+	v := map[int]string{1: "a", 2: "b"}
+	b, err := Marshal(&v)
+	assert.NoError(t, err)
+
+	var out map[int]string
+	assert.NoError(t, Unmarshal(b, &out))
+	assert.Equal(t, v, out)
+}
+
+func TestEncoderBuffer(t *testing.T) {
+	var buf bytes.Buffer
+	e := NewEncoder(&buf)
+	assert.Equal(t, &buf, e.Buffer())
+}
+
+func TestReaderHelpers(t *testing.T) {
+	r := newSliceReader([]byte{1, 2, 3, 4, 5})
+	assert.Equal(t, int64(5), r.Size())
+	assert.Equal(t, 5, r.Len())
+
+	// Read past end
+	r.offset = 100
+	assert.Equal(t, 0, r.Len())
+}
+
+func TestScanUnsupported(t *testing.T) {
+	_, err := scanType(reflect.TypeFor[chan int]())
+	assert.Error(t, err)
+}
+
+func TestScanErrors(t *testing.T) {
+	type badSliceElem struct {
+		V []chan int
+	}
+	_, err := scanType(reflect.TypeFor[badSliceElem]())
+	assert.Error(t, err)
+
+	type badPtr struct {
+		V *chan int
+	}
+	_, err = scanType(reflect.TypeFor[badPtr]())
+	assert.Error(t, err)
+
+	type badArray struct {
+		V [2]chan int
+	}
+	_, err = scanType(reflect.TypeFor[badArray]())
+	assert.Error(t, err)
+
+	type badMapKey struct {
+		V map[chan int]string
+	}
+	_, err = scanType(reflect.TypeFor[badMapKey]())
+	assert.Error(t, err)
+
+	type badMapVal struct {
+		V map[string]chan int
+	}
+	_, err = scanType(reflect.TypeFor[badMapVal]())
+	assert.Error(t, err)
+
+	type badStructField struct {
+		V chan int
+	}
+	_, err = scanType(reflect.TypeFor[badStructField]())
+	assert.Error(t, err)
+
+	type badSliceOfPtr struct {
+		V []*chan int
+	}
+	_, err = scanType(reflect.TypeFor[badSliceOfPtr]())
+	assert.Error(t, err)
+}
+
 func TestFloat(t *testing.T) {
 	tests := map[string]struct {
 		marshal   func() (any, []byte, error)

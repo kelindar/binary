@@ -6,6 +6,8 @@ package binary
 import (
 	"errors"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -109,11 +111,81 @@ func scanSlice(t reflect.Type) (Codec, error) {
 }
 
 func scanStructCodec(t reflect.Type) (Codec, error) {
-	v := make(reflectStructCodec, t.NumField())
-	hasDirect := false
-	for i := range t.NumField() {
+	n := t.NumField()
+	var (
+		hasTagged bool
+		hasPlain  bool
+		arms      []unionArm
+		seen      map[uint64]struct{}
+		maxTag    uint64
+	)
+
+	for i := range n {
 		field := t.Field(i)
-		if field.Name == "_" || field.Tag.Get("binary") == "-" {
+		tag := field.Tag.Get("binary")
+		switch {
+		case field.Name == "_" || tag == "-":
+			continue
+		case tag == "":
+			hasPlain = true
+			continue
+		}
+
+		value, option, ok := strings.Cut(tag, ",")
+		if !ok {
+			hasPlain = true
+			continue
+		}
+		if option != "union" {
+			return nil, errors.New("binary: invalid tag " + strconv.Quote(tag) + " on " + t.String())
+		}
+
+		id, err := strconv.ParseUint(value, 10, 64)
+		switch {
+		case err != nil || id == 0 || id > maxUnionTag:
+			return nil, errors.New("binary: invalid tag " + strconv.Quote(tag) + " on " + t.String())
+		case field.Type.Kind() != reflect.Ptr:
+			return nil, errors.New("binary: union arm " + field.Name + " must be a pointer")
+		}
+		if seen == nil {
+			seen = make(map[uint64]struct{}, n)
+		}
+		if _, ok := seen[id]; ok {
+			return nil, errors.New("binary: duplicate union tag " + tag + " on " + t.String())
+		}
+		seen[id] = struct{}{}
+		hasTagged = true
+		if id > maxTag {
+			maxTag = id
+		}
+
+		elem := field.Type.Elem()
+		codec, err := scanType(elem)
+		if err != nil {
+			return nil, err
+		}
+		arms = append(arms, unionArm{
+			tag:    id,
+			index:  i,
+			offset: field.Offset,
+			elem:   elem,
+			codec:  codec,
+		})
+	}
+
+	switch {
+	case hasTagged && hasPlain:
+		return nil, errors.New("binary: mixed union and sequential fields on " + t.String())
+	case hasTagged:
+		return newUnionCodec(arms, maxTag), nil
+	}
+
+	v := make(reflectStructCodec, n)
+	hasDirect := false
+	for i := range n {
+		field := t.Field(i)
+		tag := field.Tag.Get("binary")
+		if field.Name == "_" || tag == "-" {
 			continue
 		}
 		codec, err := scanType(field.Type)
@@ -142,6 +214,19 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		v[0].Field |= fieldDirect
 	}
 	return &v, nil
+}
+
+const maxUnionTag = 255 // wire tags are uvarint; arms must fit a dense 1..255 table (0 = none)
+
+func newUnionCodec(arms []unionArm, maxTag uint64) *reflectUnionCodec {
+	byTag := make([]int, maxTag+1)
+	for i := range byTag {
+		byTag[i] = -1
+	}
+	for i := range arms {
+		byTag[arms[i].tag] = i
+	}
+	return &reflectUnionCodec{arms: arms, byTag: byTag}
 }
 
 func scanMap(t reflect.Type) (Codec, error) {
