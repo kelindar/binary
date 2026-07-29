@@ -53,6 +53,7 @@ func runBinary(b *bench.B) {
 	runBinaryUint64s(b)
 	runBinaryReuse(b)
 	runBinaryTrace(b)
+	runBinaryUnion(b)
 }
 
 func runBinaryMsg(b *bench.B) {
@@ -216,6 +217,66 @@ func runBinaryTrace(b *bench.B) {
 
 	b.Run("binary/trace-enc", func(int) { binary.Marshal(&value) })
 	b.Run("binary/trace-dec", func(int) { binary.Unmarshal(enc, &out) })
+}
+
+type unionText struct {
+	Msg string
+}
+
+type unionImage struct {
+	Width  int
+	Height int
+	Bytes  []byte
+}
+
+type unionPayload struct {
+	Text  *unionText  `binary:"1"`
+	Image *unionImage `binary:"2"`
+}
+
+type unionEnvelope struct {
+	ID   uint64
+	Body unionPayload
+}
+
+func runBinaryUnion(b *bench.B) {
+	v := unionPayload{
+		Image: &unionImage{
+			Width:  640,
+			Height: 480,
+			Bytes:  makeBytes(256),
+		},
+	}
+	enc, _ := binary.Marshal(&v)
+	var out unionPayload
+
+	b.Run("binary/union-enc", func(int) { binary.Marshal(&v) })
+	b.Run("binary/union-dec", func(int) { binary.Unmarshal(enc, &out) })
+
+	env := unionEnvelope{ID: 42, Body: v}
+	envEnc, _ := binary.Marshal(&env)
+	var envOut unionEnvelope
+
+	b.Run("binary/union-nest-enc", func(int) { binary.Marshal(&env) })
+	b.Run("binary/union-nest-dec", func(int) { binary.Unmarshal(envEnc, &envOut) })
+
+	var buf bytes.Buffer
+	encoder := binary.NewEncoder(&buf)
+	_ = encoder.Encode(&v)
+
+	reader := bytes.NewReader(enc)
+	decoder := binary.NewDecoder(reader)
+	_ = decoder.Decode(&out)
+
+	b.Run("binary/union-reuse-enc", func(int) {
+		buf.Reset()
+		encoder.Reset(&buf)
+		_ = encoder.Encode(&v)
+	})
+	b.Run("binary/union-reuse-dec", func(int) {
+		reader.Reset(enc)
+		_ = decoder.Decode(&out)
+	})
 }
 
 // ------------------------------------------------------------------------------

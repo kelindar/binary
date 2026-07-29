@@ -18,6 +18,7 @@ This package contains a **high-performance binary serializer** for Go that encod
 - **Fast paths** for `[]byte` and other common slice types.
 - **Custom serialization** via `encoding.BinaryMarshaler` / `BinaryUnmarshaler` or a full `Codec` through `GetBinaryCodec`.
 - **Field skipping** with the `binary:"-"` struct tag.
+- **Tagged unions** (oneof / versioning) via numeric `binary:"N"` tags on pointer fields.
 - Optional subpackages for **sorted**, **unsafe**, and **nocopy** typed slices when you need smaller payloads or lower decode cost.
 
 ## Documentation
@@ -27,6 +28,7 @@ Variable-sized values are prefixed with a varint-encoded size and encoded recurs
 - [Quick Start](#quick-start)
 - [Streaming Encode and Decode](#streaming-encode-and-decode)
 - [Skipping Fields](#skipping-fields)
+- [Tagged Unions](#tagged-unions)
 - [Custom Serialization](#custom-serialization)
 - [Typed Slice Subpackages](#typed-slice-subpackages)
 - [Benchmarks](#benchmarks)
@@ -90,6 +92,68 @@ type Cache struct {
 	Value []byte
 }
 ```
+
+## Tagged Unions
+
+A struct whose included fields all use numeric `binary:"N"` tags (`N` in `1..255`) is encoded as a **tagged union** (oneof / versioning):
+
+```text
+uvarint(tag) + uvarint(len) + body
+```
+
+Arms must be pointers. Exactly one may be non-nil on encode; all nil writes tag `0` with an empty body. Unknown tags are skipped on decode (forward-compatible versioning).
+
+### Oneof
+
+```go
+type Payload struct {
+	Text  *TextPayload  `binary:"1"`
+	Image *ImagePayload `binary:"2"`
+}
+
+encoded, err := binary.Marshal(Payload{Text: &TextPayload{Msg: "hi"}})
+
+var out Payload
+err = binary.Unmarshal(encoded, &out)
+// out.Text != nil
+```
+
+### Versioning
+
+Use one arm per schema version. Older readers ignore newer tags; newer readers still decode older payloads:
+
+```go
+type DocV1 struct {
+	Title string
+}
+
+type DocV2 struct {
+	Title string
+	Body  string
+}
+
+type Doc struct {
+	V1 *DocV1 `binary:"1"`
+	V2 *DocV2 `binary:"2"`
+}
+
+// Writer on the new version
+encoded, err := binary.Marshal(Doc{V2: &DocV2{Title: "hi", Body: "world"}})
+
+// Reader that only knows V1 still succeeds: unknown tag 2 is skipped
+var legacy struct {
+	V1 *DocV1 `binary:"1"`
+}
+err = binary.Unmarshal(encoded, &legacy)
+// legacy.V1 == nil — body was skipped, no error
+
+// Reader that knows both picks the matching arm
+var current Doc
+err = binary.Unmarshal(encoded, &current)
+// current.V2 != nil
+```
+
+Nest a union inside a normal sequential struct as a single field. For hand-rolled codecs, use `Encoder.WriteTagged` / `Decoder.ReadTagged` with the same framing.
 
 ## Custom Serialization
 
@@ -240,6 +304,12 @@ binary/u64-enc       75.3 µs      13.3K        11
 binary/u64-dec       58.4 µs      17.1K        2
 binary/reuse-enc     113.2 ns     8.8M         0
 binary/stream-dec    240.8 ns     4.2M         5
+binary/union-enc     242.4 ns     4.1M         3
+binary/union-dec     235.1 ns     4.3M         3
+binary/union-nest-enc 289.1 ns     3.5M         3
+binary/union-nest-dec 265.5 ns     3.8M         3
+binary/union-reuse-enc 206.6 ns     4.8M         0
+binary/union-reuse-dec 272.7 ns     3.7M         4
 nocopy/str-enc       109.7 ns     9.1M         3
 nocopy/str-dec       39.2 ns      25.5M        0
 nocopy/dict-enc      185.7 ns     5.4M         2

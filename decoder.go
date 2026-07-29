@@ -173,3 +173,19 @@ func (d *Decoder) ReadSlice() (b []byte, err error) {
 	}
 	return
 }
+
+// ReadTagged reads a length-prefixed tagged payload written by WriteTagged.
+// On the slice/buffer path, body aliases the decoder input and is valid only
+// until the next read on this Decoder; copy it to retain. On a stream path,
+// body is an owned copy.
+func (d *Decoder) ReadTagged() (tag uint64, body []byte, err error) {
+	if tag, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	body, err = d.Slice(int(l))
+	return
+}
