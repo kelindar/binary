@@ -171,7 +171,7 @@ func (d *Decoder) readSlice(n uint64) ([]byte, error) {
 	if n > uint64(^uint(0)>>1) {
 		return nil, io.ErrUnexpectedEOF
 	}
-	return d.Slice(int(n))
+	return d.reader.Slice(int(n))
 }
 
 // ReadSlice reads a varint prefixed sub-slice without copying and returns the underlying
