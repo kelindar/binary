@@ -23,7 +23,7 @@ This package contains a **high-performance binary serializer** for Go that encod
 
 ## Documentation
 
-Variable-sized values are prefixed with a varint-encoded size and encoded recursively. The format is intentionally not versioned or cross-language — this is for efficient exchange of known Go types between systems you control.
+Variable-sized values are prefixed with a varint-encoded size and encoded recursively. The default sequential format is not self-describing or automatically versioned; tagged unions provide explicit, user-managed versioning. The format is Go-specific and intended for systems you control.
 
 - [Quick Start](#quick-start)
 - [Streaming Encode and Decode](#streaming-encode-and-decode)
@@ -287,58 +287,58 @@ cd bench && go run .
 ```
 
 ```
-name                 time/op      ops/s        allocs/op   
+name                 time/op      ops/s        allocs/op
 -------------------- ------------ ------------ ------------
-binary/enc           122.6 ns     8.2M         2   
-binary/enc-to        89.0 ns      11.2M        0   
-binary/dec           90.1 ns      11.1M        1   
-binary/map-enc       8.5 µs       117.4K       209 
-binary/map-dec       12.8 µs      78.1K        500 
-binary/slice-enc     8.0 µs       124.3K       9   
-binary/slice-dec     6.6 µs       151.4K       100 
-binary/nest-enc      4.2 µs       236.1K       13  
-binary/nest-dec      3.7 µs       270.0K       63  
-binary/bytes-enc     812.2 ns     1.2M         3   
-binary/bytes-dec     172.5 ns     5.8M         0   
-binary/u64-enc       42.4 µs      23.6K        3   
-binary/u64-dec       57.6 µs      17.4K        0   
-binary/reuse-enc     95.7 ns      10.5M        0   
-binary/stream-dec    147.4 ns     6.8M         2   
-binary/trace-enc     12.6 µs      79.2K        9   
-binary/trace-dec     13.0 µs      76.7K        640 
-union/enc            196.6 ns     5.1M         3   
-union/dec            100.7 ns     9.9M         0   
-union/nest-enc       213.3 ns     4.7M         3   
-union/nest-dec       110.4 ns     9.1M         0   
-union/reuse-enc      98.3 ns      10.2M        0   
-union/stream-dec     132.9 ns     7.5M         1   
-nocopy/str-enc       107.6 ns     9.3M         3   
-nocopy/str-dec       34.8 ns      28.8M        0   
-nocopy/dict-enc      183.7 ns     5.4M         2   
-nocopy/dict-dec      155.5 ns     6.4M         2   
-nocopy/bmap-enc      322.4 ns     3.1M         5   
-nocopy/bmap-dec      161.9 ns     6.2M         2   
-nocopy/hmap-enc      320.1 ns     3.1M         5   
-nocopy/hmap-dec      143.9 ns     7.0M         2   
-nocopy/bytes-enc     841.1 ns     1.2M         3   
-nocopy/bytes-dec     35.8 ns      28.0M        0   
-nocopy/u64-enc       5.4 µs       186.9K       3   
-nocopy/u64-dec       32.0 ns      31.2M        0   
-nocopy/col-enc       504.2 ns     2.0M         8   
-nocopy/col-dec       359.0 ns     2.8M         6   
-nocopy/struct-enc    161.0 ns     6.2M         3   
-nocopy/struct-dec    72.4 ns      13.8M        0   
-sorted/i32-enc       81.7 µs      12.2K        5   
-sorted/i32-dec       57.6 µs      17.4K        0   
-sorted/u32-enc       78.8 µs      12.7K        5   
-sorted/u32-dec       51.3 µs      19.5K        0   
-sorted/ts-enc        51.4 µs      19.4K        6   
-sorted/ts-dec        22.8 µs      43.9K        2   
-sorted/tsz-enc       129.7 µs     7.7K         7   
-sorted/tsz-dec       132.0 µs     7.6K         3   
-sorted/tcz-enc       86.9 µs      11.5K        6   
-sorted/tcz-dec       79.2 µs      12.6K        3   
-unsafe/u64-enc       483.4 ns     2.1M         3   
+binary/enc           122.6 ns     8.2M         2
+binary/enc-to        89.0 ns      11.2M        0
+binary/dec           90.1 ns      11.1M        1
+binary/map-enc       8.5 µs       117.4K       209
+binary/map-dec       12.8 µs      78.1K        500
+binary/slice-enc     8.0 µs       124.3K       9
+binary/slice-dec     6.6 µs       151.4K       100
+binary/nest-enc      4.2 µs       236.1K       13
+binary/nest-dec      3.7 µs       270.0K       63
+binary/bytes-enc     812.2 ns     1.2M         3
+binary/bytes-dec     172.5 ns     5.8M         0
+binary/u64-enc       42.4 µs      23.6K        3
+binary/u64-dec       57.6 µs      17.4K        0
+binary/reuse-enc     95.7 ns      10.5M        0
+binary/stream-dec    147.4 ns     6.8M         2
+binary/trace-enc     12.6 µs      79.2K        9
+binary/trace-dec     13.0 µs      76.7K        640
+union/enc            196.6 ns     5.1M         3
+union/dec            100.7 ns     9.9M         0
+union/nest-enc       213.3 ns     4.7M         3
+union/nest-dec       110.4 ns     9.1M         0
+union/reuse-enc      98.3 ns      10.2M        0
+union/stream-dec     132.9 ns     7.5M         1
+nocopy/str-enc       107.6 ns     9.3M         3
+nocopy/str-dec       34.8 ns      28.8M        0
+nocopy/dict-enc      183.7 ns     5.4M         2
+nocopy/dict-dec      155.5 ns     6.4M         2
+nocopy/bmap-enc      322.4 ns     3.1M         5
+nocopy/bmap-dec      161.9 ns     6.2M         2
+nocopy/hmap-enc      320.1 ns     3.1M         5
+nocopy/hmap-dec      143.9 ns     7.0M         2
+nocopy/bytes-enc     841.1 ns     1.2M         3
+nocopy/bytes-dec     35.8 ns      28.0M        0
+nocopy/u64-enc       5.4 µs       186.9K       3
+nocopy/u64-dec       32.0 ns      31.2M        0
+nocopy/col-enc       504.2 ns     2.0M         8
+nocopy/col-dec       359.0 ns     2.8M         6
+nocopy/struct-enc    161.0 ns     6.2M         3
+nocopy/struct-dec    72.4 ns      13.8M        0
+sorted/i32-enc       81.7 µs      12.2K        5
+sorted/i32-dec       57.6 µs      17.4K        0
+sorted/u32-enc       78.8 µs      12.7K        5
+sorted/u32-dec       51.3 µs      19.5K        0
+sorted/ts-enc        51.4 µs      19.4K        6
+sorted/ts-dec        22.8 µs      43.9K        2
+sorted/tsz-enc       129.7 µs     7.7K         7
+sorted/tsz-dec       132.0 µs     7.6K         3
+sorted/tcz-enc       86.9 µs      11.5K        6
+sorted/tcz-dec       79.2 µs      12.6K        3
+unsafe/u64-enc       483.4 ns     2.1M         3
 unsafe/u64-dec       463.0 ns     2.2M         2
 ```
 
