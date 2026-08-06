@@ -239,7 +239,7 @@ func TestDecodeEmptySlices(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-func TestDecodeReusesPointerSlices(t *testing.T) {
+func TestPointerSliceReuse(t *testing.T) {
 	type item struct {
 		Value int64
 	}
@@ -265,7 +265,7 @@ func TestDecodeReusesPointerSlices(t *testing.T) {
 	assert.Empty(t, got)
 }
 
-func TestDecodeClearsReusedPointer(t *testing.T) {
+func TestPointerClear(t *testing.T) {
 	type item struct {
 		Value *int64
 	}
@@ -297,6 +297,61 @@ func TestDecodePopulatedMap(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, Unmarshal(encoded, &got))
 	assert.Empty(t, got)
+}
+
+func TestNumericSlices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{"int8", []int8{-2, 0, 2}},
+		{"int16", []int16{-2, 0, 2}},
+		{"int32", []int32{-2, 0, 2}},
+		{"int64", []int64{-2, 0, 2}},
+		{"uint16", []uint16{0, 127, 128}},
+		{"uint32", []uint32{0, 127, 128}},
+		{"uint64", []uint64{0, 127, 128}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := Marshal(tc.value)
+			assert.NoError(t, err)
+
+			var writer struct{ bytes.Buffer }
+			assert.NoError(t, MarshalTo(tc.value, &writer))
+			assert.Equal(t, want, writer.Bytes())
+
+			got := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, Unmarshal(want, got.Interface()))
+			assert.Equal(t, tc.value, got.Elem().Interface())
+		})
+	}
+}
+
+func TestMapDecode(t *testing.T) {
+	data := append([]byte{1, 0, 0}, bytes.Repeat([]byte{0xff}, 9)...)
+	data = append(data, 1)
+
+	var got map[string][]byte
+	assert.Error(t, Unmarshal(data, &got))
+}
+
+func TestCustomDecode(t *testing.T) {
+	type payload struct {
+		Value *s2
+	}
+
+	data, err := Marshal(payload{Value: &s2{b: []byte{0x13}}})
+	assert.NoError(t, err)
+
+	got := payload{Value: &s2{b: []byte{0x99}}}
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Equal(t, []byte{0x13}, got.Value.b)
+
+	data, err = Marshal(payload{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Nil(t, got.Value)
 }
 
 func testMarshalComplexStruct(t *testing.T) {

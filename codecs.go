@@ -230,10 +230,6 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 			for _, v := range unsafe.Slice((*int64)(base), l) {
 				buffer = binary.AppendVarint(buffer, v)
 			}
-		default:
-			for i := range l {
-				buffer = binary.AppendVarint(buffer, rv.Index(i).Int())
-			}
 		}
 		e.Write(buffer)
 		return
@@ -255,10 +251,6 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	case 8:
 		for _, v := range unsafe.Slice((*int64)(base), l) {
 			e.WriteVarint(v)
-		}
-	default:
-		for i := range l {
-			e.WriteVarint(rv.Index(i).Int())
 		}
 	}
 	return
@@ -306,14 +298,6 @@ func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 					return
 				}
 			}
-		default:
-			for i := 0; i < n; i++ {
-				var v int64
-				if v, err = d.ReadVarint(); err != nil {
-					return
-				}
-				rv.Index(i).SetInt(v)
-			}
 		}
 	}
 	return
@@ -334,10 +318,6 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 		buffer := out.AvailableBuffer()
 		base := rv.UnsafePointer()
 		switch c.elemSize {
-		case 1:
-			for _, v := range unsafe.Slice((*uint8)(base), l) {
-				buffer = binary.AppendUvarint(buffer, uint64(v))
-			}
 		case 2:
 			for _, v := range unsafe.Slice((*uint16)(base), l) {
 				buffer = binary.AppendUvarint(buffer, uint64(v))
@@ -350,20 +330,12 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 			for _, v := range unsafe.Slice((*uint64)(base), l) {
 				buffer = binary.AppendUvarint(buffer, v)
 			}
-		default:
-			for i := range l {
-				buffer = binary.AppendUvarint(buffer, rv.Index(i).Uint())
-			}
 		}
 		e.Write(buffer)
 		return
 	}
 	base := rv.UnsafePointer()
 	switch c.elemSize {
-	case 1:
-		for _, v := range unsafe.Slice((*uint8)(base), l) {
-			e.WriteUvarint(uint64(v))
-		}
 	case 2:
 		for _, v := range unsafe.Slice((*uint16)(base), l) {
 			e.WriteUvarint(uint64(v))
@@ -375,10 +347,6 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	case 8:
 		for _, v := range unsafe.Slice((*uint64)(base), l) {
 			e.WriteUvarint(v)
-		}
-	default:
-		for i := range l {
-			e.WriteUvarint(rv.Index(i).Uint())
 		}
 	}
 	return
@@ -392,14 +360,6 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		resizeSlice(rv, n)
 		base := rv.UnsafePointer()
 		switch c.elemSize {
-		case 1:
-			values := unsafe.Slice((*uint8)(base), n)
-			for i := range values {
-				if v, err = d.ReadUvarint(); err != nil {
-					return
-				}
-				values[i] = uint8(v)
-			}
 		case 2:
 			values := unsafe.Slice((*uint16)(base), n)
 			for i := range values {
@@ -422,13 +382,6 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 				if values[i], err = d.ReadUvarint(); err != nil {
 					return
 				}
-			}
-		default:
-			for i := 0; i < n; i++ {
-				if v, err = d.ReadUvarint(); err != nil {
-					return
-				}
-				rv.Index(i).SetUint(v)
 			}
 		}
 	}
