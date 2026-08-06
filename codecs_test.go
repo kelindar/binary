@@ -80,6 +80,16 @@ func (s *s2) MarshalBinary() (data []byte, err error) {
 	return s.b, nil
 }
 
+type failingBinary struct{}
+
+func (failingBinary) MarshalBinary() ([]byte, error) {
+	return nil, errors.New("encode failed")
+}
+
+func (*failingBinary) UnmarshalBinary([]byte) error {
+	return nil
+}
+
 func TestMarshal(t *testing.T) {
 	tests := map[string]func(*testing.T){
 		"time slice":          testMarshalTimeSlice,
@@ -263,6 +273,10 @@ func TestPointerSliceReuse(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, Unmarshal(empty, &got))
 	assert.Empty(t, got)
+
+	for _, data := range [][]byte{{}, {1}, {1, 0}} {
+		assert.Error(t, Unmarshal(data, &got))
+	}
 }
 
 func TestPointerClear(t *testing.T) {
@@ -333,7 +347,22 @@ func TestMapDecode(t *testing.T) {
 	data = append(data, 1)
 
 	var got map[string][]byte
+	for _, data := range [][]byte{{}, {1}, {1, 1, 0}, {1, 0, 0}} {
+		assert.Error(t, Unmarshal(data, &got))
+	}
 	assert.Error(t, Unmarshal(data, &got))
+	assert.Error(t, Unmarshal([]byte{1, 0, 0, 1}, &got))
+
+	var strings map[string]string
+	for _, data := range [][]byte{{}, {1}, {1, 1, 0}, {1, 0, 0}} {
+		assert.Error(t, Unmarshal(data, &strings))
+	}
+
+	encoded, err := Marshal(map[string]string{"fresh": "value"})
+	assert.NoError(t, err)
+	strings = map[string]string{"stale": "value"}
+	assert.NoError(t, Unmarshal(encoded, &strings))
+	assert.Equal(t, map[string]string{"fresh": "value"}, strings)
 }
 
 func TestCustomDecode(t *testing.T) {
@@ -352,6 +381,18 @@ func TestCustomDecode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, Unmarshal(data, &got))
 	assert.Nil(t, got.Value)
+}
+
+func TestPointerEncodeError(t *testing.T) {
+	type inner struct {
+		Value failingBinary
+	}
+	type outer struct {
+		Value *inner
+	}
+
+	_, err := Marshal(outer{Value: &inner{}})
+	assert.Error(t, err)
 }
 
 func testMarshalComplexStruct(t *testing.T) {
@@ -958,9 +999,14 @@ func TestMapEncodeError(t *testing.T) {
 	b, err := Marshal(&v)
 	assert.NoError(t, err)
 
-	var out map[int]string
+	out := map[int]string{99: "stale"}
 	assert.NoError(t, Unmarshal(b, &out))
 	assert.Equal(t, v, out)
+
+	_, err = Marshal(map[failingBinary]string{failingBinary{}: "value"})
+	assert.Error(t, err)
+	_, err = Marshal(map[string]failingBinary{"key": {}})
+	assert.Error(t, err)
 }
 
 func TestEncoderBuffer(t *testing.T) {
