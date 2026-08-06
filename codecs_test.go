@@ -239,6 +239,46 @@ func TestDecodeEmptySlices(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestDecodeReusesPointerSlices(t *testing.T) {
+	type item struct {
+		Value int64
+	}
+
+	first, err := Marshal([]*item{{Value: 1}, {Value: 2}})
+	assert.NoError(t, err)
+	second, err := Marshal([]*item{nil, {Value: 3}})
+	assert.NoError(t, err)
+
+	got := []*item{{Value: 9}, {Value: 8}}
+	assert.NoError(t, Unmarshal(first, &got))
+	reused := got[1]
+	assert.NoError(t, Unmarshal(second, &got))
+	assert.Nil(t, got[0])
+	if got[1] != reused {
+		t.Fatalf("pointer was not reused: got %p want %p", got[1], reused)
+	}
+	assert.Equal(t, int64(3), got[1].Value)
+
+	empty, err := Marshal([]*item{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(empty, &got))
+	assert.Empty(t, got)
+}
+
+func TestDecodeClearsReusedPointer(t *testing.T) {
+	type item struct {
+		Value *int64
+	}
+
+	value := int64(1)
+	encoded, err := Marshal(item{})
+	assert.NoError(t, err)
+
+	got := item{Value: &value}
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Nil(t, got.Value)
+}
+
 func TestDecodePopulatedMap(t *testing.T) {
 	want := map[string][]byte{
 		"first":  []byte("one"),
@@ -315,13 +355,13 @@ func testMarshalBigStruct(t *testing.T) {
 
 func TestStruct(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"nested fields":         testStructNestedFields,
-		"embedded struct":       testStructEmbedded,
-		"array of struct":       testStructArray,
-		"slice of struct":       testStructSlice,
-		"trace slice wire":      testStructTraceSliceWire,
+		"nested fields":            testStructNestedFields,
+		"embedded struct":          testStructEmbedded,
+		"array of struct":          testStructArray,
+		"slice of struct":          testStructSlice,
+		"trace slice wire":         testStructTraceSliceWire,
 		"decode error keeps field": testStructDecodeErrorKeepsField,
-		"custom field codec":    testStructCustomFieldCodec,
+		"custom field codec":       testStructCustomFieldCodec,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -776,8 +816,8 @@ func testPointerTimeSlice(t *testing.T) {
 
 func TestStructUintComplex(t *testing.T) {
 	type allTypes struct {
-		U   uint
-		C64 complex64
+		U    uint
+		C64  complex64
 		C128 complex128
 	}
 	in := allTypes{U: 42, C64: 1 + 2i, C128: 3 + 4i}

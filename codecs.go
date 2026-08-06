@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"io"
 	"reflect"
 	"unsafe"
 )
@@ -33,7 +34,7 @@ type reflectArrayCodec struct {
 func (c *reflectArrayCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Type().Len()
 	for i := range l {
-		v := reflect.Indirect(rv.Index(i).Addr())
+		v := rv.Index(i)
 		if err = c.elemCodec.EncodeTo(e, v); err != nil {
 			return
 		}
@@ -72,7 +73,7 @@ func (c *reflectSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	e.WriteUvarint(uint64(l))
 	for i := range l {
-		v := reflect.Indirect(rv.Index(i).Addr())
+		v := rv.Index(i)
 		if err = c.elemCodec.EncodeTo(e, v); err != nil {
 			return
 		}
@@ -108,8 +109,9 @@ func (c *reflectSliceOfPtrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err err
 	e.WriteUvarint(uint64(l))
 	for i := range l {
 		v := rv.Index(i)
-		e.writeBool(v.IsNil())
-		if !v.IsNil() {
+		isNil := v.IsNil()
+		e.writeBool(isNil)
+		if !isNil {
 			if err = c.elemCodec.EncodeTo(e, reflect.Indirect(v)); err != nil {
 				return
 			}
@@ -122,20 +124,24 @@ func (c *reflectSliceOfPtrCodec) EncodeTo(e *Encoder, rv reflect.Value) (err err
 func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	var isNil bool
-	if l, err = d.ReadUvarint(); err == nil && l > 0 {
-		rv.Set(reflect.MakeSlice(rv.Type(), int(l), int(l)))
-		for i := 0; i < int(l); i++ {
-			if isNil, err = d.ReadBool(); !isNil {
-				if err != nil {
-					return
-				}
-
-				ptr := rv.Index(i)
-				ptr.Set(reflect.New(c.elemType))
-				if err = c.elemCodec.DecodeTo(d, reflect.Indirect(ptr)); err != nil {
-					return
-				}
-			}
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	resizeSlice(rv, int(l))
+	for i := 0; i < int(l); i++ {
+		ptr := rv.Index(i)
+		if isNil, err = d.ReadBool(); err != nil {
+			return
+		}
+		if isNil {
+			ptr.SetZero()
+			continue
+		}
+		if ptr.IsNil() {
+			ptr.Set(reflect.New(c.elemType))
+		}
+		if err = c.elemCodec.DecodeTo(d, ptr.Elem()); err != nil {
+			return
 		}
 	}
 	return
@@ -195,7 +201,9 @@ func (c *boolSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 // ------------------------------------------------------------------------------
 
-type varintSliceCodec struct{}
+type varintSliceCodec struct {
+	elemSize uintptr
+}
 
 // Encode encodes a value into the encoder.
 func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
@@ -204,14 +212,54 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
 		out.Grow(2 * l)
 		buffer := out.AvailableBuffer()
-		for i := range l {
-			buffer = binary.AppendVarint(buffer, rv.Index(i).Int())
+		base := rv.UnsafePointer()
+		switch c.elemSize {
+		case 1:
+			for _, v := range unsafe.Slice((*int8)(base), l) {
+				buffer = binary.AppendVarint(buffer, int64(v))
+			}
+		case 2:
+			for _, v := range unsafe.Slice((*int16)(base), l) {
+				buffer = binary.AppendVarint(buffer, int64(v))
+			}
+		case 4:
+			for _, v := range unsafe.Slice((*int32)(base), l) {
+				buffer = binary.AppendVarint(buffer, int64(v))
+			}
+		case 8:
+			for _, v := range unsafe.Slice((*int64)(base), l) {
+				buffer = binary.AppendVarint(buffer, v)
+			}
+		default:
+			for i := range l {
+				buffer = binary.AppendVarint(buffer, rv.Index(i).Int())
+			}
 		}
 		e.Write(buffer)
 		return
 	}
-	for i := range l {
-		e.WriteVarint(rv.Index(i).Int())
+	base := rv.UnsafePointer()
+	switch c.elemSize {
+	case 1:
+		for _, v := range unsafe.Slice((*int8)(base), l) {
+			e.WriteVarint(int64(v))
+		}
+	case 2:
+		for _, v := range unsafe.Slice((*int16)(base), l) {
+			e.WriteVarint(int64(v))
+		}
+	case 4:
+		for _, v := range unsafe.Slice((*int32)(base), l) {
+			e.WriteVarint(int64(v))
+		}
+	case 8:
+		for _, v := range unsafe.Slice((*int64)(base), l) {
+			e.WriteVarint(v)
+		}
+	default:
+		for i := range l {
+			e.WriteVarint(rv.Index(i).Int())
+		}
 	}
 	return
 }
@@ -220,10 +268,50 @@ func (c *varintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	if l, err = d.ReadUvarint(); err == nil {
-		resizeSlice(rv, int(l))
-		for i := 0; i < int(l); i++ {
-			var v int64
-			if v, err = d.ReadVarint(); err == nil {
+		n := int(l)
+		resizeSlice(rv, n)
+		base := rv.UnsafePointer()
+		switch c.elemSize {
+		case 1:
+			values := unsafe.Slice((*int8)(base), n)
+			for i := range values {
+				var v int64
+				if v, err = d.ReadVarint(); err != nil {
+					return
+				}
+				values[i] = int8(v)
+			}
+		case 2:
+			values := unsafe.Slice((*int16)(base), n)
+			for i := range values {
+				var v int64
+				if v, err = d.ReadVarint(); err != nil {
+					return
+				}
+				values[i] = int16(v)
+			}
+		case 4:
+			values := unsafe.Slice((*int32)(base), n)
+			for i := range values {
+				var v int64
+				if v, err = d.ReadVarint(); err != nil {
+					return
+				}
+				values[i] = int32(v)
+			}
+		case 8:
+			values := unsafe.Slice((*int64)(base), n)
+			for i := range values {
+				if values[i], err = d.ReadVarint(); err != nil {
+					return
+				}
+			}
+		default:
+			for i := 0; i < n; i++ {
+				var v int64
+				if v, err = d.ReadVarint(); err != nil {
+					return
+				}
 				rv.Index(i).SetInt(v)
 			}
 		}
@@ -233,7 +321,9 @@ func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 // ------------------------------------------------------------------------------
 
-type varuintSliceCodec struct{}
+type varuintSliceCodec struct {
+	elemSize uintptr
+}
 
 // Encode encodes a value into the encoder.
 func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
@@ -242,14 +332,54 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
 		out.Grow(2 * l)
 		buffer := out.AvailableBuffer()
-		for i := range l {
-			buffer = binary.AppendUvarint(buffer, rv.Index(i).Uint())
+		base := rv.UnsafePointer()
+		switch c.elemSize {
+		case 1:
+			for _, v := range unsafe.Slice((*uint8)(base), l) {
+				buffer = binary.AppendUvarint(buffer, uint64(v))
+			}
+		case 2:
+			for _, v := range unsafe.Slice((*uint16)(base), l) {
+				buffer = binary.AppendUvarint(buffer, uint64(v))
+			}
+		case 4:
+			for _, v := range unsafe.Slice((*uint32)(base), l) {
+				buffer = binary.AppendUvarint(buffer, uint64(v))
+			}
+		case 8:
+			for _, v := range unsafe.Slice((*uint64)(base), l) {
+				buffer = binary.AppendUvarint(buffer, v)
+			}
+		default:
+			for i := range l {
+				buffer = binary.AppendUvarint(buffer, rv.Index(i).Uint())
+			}
 		}
 		e.Write(buffer)
 		return
 	}
-	for i := range l {
-		e.WriteUvarint(rv.Index(i).Uint())
+	base := rv.UnsafePointer()
+	switch c.elemSize {
+	case 1:
+		for _, v := range unsafe.Slice((*uint8)(base), l) {
+			e.WriteUvarint(uint64(v))
+		}
+	case 2:
+		for _, v := range unsafe.Slice((*uint16)(base), l) {
+			e.WriteUvarint(uint64(v))
+		}
+	case 4:
+		for _, v := range unsafe.Slice((*uint32)(base), l) {
+			e.WriteUvarint(uint64(v))
+		}
+	case 8:
+		for _, v := range unsafe.Slice((*uint64)(base), l) {
+			e.WriteUvarint(v)
+		}
+	default:
+		for i := range l {
+			e.WriteUvarint(rv.Index(i).Uint())
+		}
 	}
 	return
 }
@@ -258,9 +388,46 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l, v uint64
 	if l, err = d.ReadUvarint(); err == nil {
-		resizeSlice(rv, int(l))
-		for i := 0; i < int(l); i++ {
-			if v, err = d.ReadUvarint(); err == nil {
+		n := int(l)
+		resizeSlice(rv, n)
+		base := rv.UnsafePointer()
+		switch c.elemSize {
+		case 1:
+			values := unsafe.Slice((*uint8)(base), n)
+			for i := range values {
+				if v, err = d.ReadUvarint(); err != nil {
+					return
+				}
+				values[i] = uint8(v)
+			}
+		case 2:
+			values := unsafe.Slice((*uint16)(base), n)
+			for i := range values {
+				if v, err = d.ReadUvarint(); err != nil {
+					return
+				}
+				values[i] = uint16(v)
+			}
+		case 4:
+			values := unsafe.Slice((*uint32)(base), n)
+			for i := range values {
+				if v, err = d.ReadUvarint(); err != nil {
+					return
+				}
+				values[i] = uint32(v)
+			}
+		case 8:
+			values := unsafe.Slice((*uint64)(base), n)
+			for i := range values {
+				if values[i], err = d.ReadUvarint(); err != nil {
+					return
+				}
+			}
+		default:
+			for i := 0; i < n; i++ {
+				if v, err = d.ReadUvarint(); err != nil {
+					return
+				}
 				rv.Index(i).SetUint(v)
 			}
 		}
@@ -296,6 +463,7 @@ func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error)
 	case err != nil:
 		return err
 	case isNil:
+		rv.SetZero()
 		return
 	}
 
@@ -589,6 +757,7 @@ func (c *customCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 			return err
 		}
 		if isNil {
+			rv.SetZero()
 			return nil
 		}
 
@@ -643,6 +812,110 @@ type reflectMapCodec struct {
 	val Codec // Codec for the value
 }
 
+type stringBytesMapCodec struct{}
+
+func (stringBytesMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	m := rv.Interface().(map[string][]byte)
+	e.WriteUvarint(uint64(len(m)))
+	for key, value := range m {
+		e.WriteUint16(uint16(len(key)))
+		e.Write(ToBytes(key))
+		e.WriteUvarint(uint64(len(value)))
+		e.Write(value)
+	}
+	return
+}
+
+func (stringBytesMapCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+
+	m := rv.Interface().(map[string][]byte)
+	if m == nil {
+		m = make(map[string][]byte, int(l))
+		rv.Set(reflect.ValueOf(m))
+	} else {
+		clear(m)
+	}
+
+	for i := 0; i < int(l); i++ {
+		var size uint16
+		if size, err = d.ReadUint16(); err != nil {
+			return
+		}
+		var keyBytes []byte
+		if keyBytes, err = d.Slice(int(size)); err != nil {
+			return
+		}
+		key := string(keyBytes)
+
+		var length uint64
+		if length, err = d.ReadUvarint(); err != nil {
+			return
+		}
+		var value []byte
+		if length > 0 {
+			if length > uint64(^uint(0)>>1) {
+				return io.ErrUnexpectedEOF
+			}
+			value = make([]byte, int(length))
+			if _, err = d.Read(value); err != nil {
+				return
+			}
+		}
+		m[key] = value
+	}
+	return
+}
+
+type stringStringMapCodec struct{}
+
+func (stringStringMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	m := rv.Interface().(map[string]string)
+	e.WriteUvarint(uint64(len(m)))
+	for key, value := range m {
+		e.WriteUint16(uint16(len(key)))
+		e.Write(ToBytes(key))
+		e.WriteString(value)
+	}
+	return
+}
+
+func (stringStringMapCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+
+	m := rv.Interface().(map[string]string)
+	if m == nil {
+		m = make(map[string]string, int(l))
+		rv.Set(reflect.ValueOf(m))
+	} else {
+		clear(m)
+	}
+
+	for i := 0; i < int(l); i++ {
+		var size uint16
+		if size, err = d.ReadUint16(); err != nil {
+			return
+		}
+		var keyBytes []byte
+		if keyBytes, err = d.Slice(int(size)); err != nil {
+			return
+		}
+
+		var value string
+		if value, err = d.ReadString(); err != nil {
+			return
+		}
+		m[string(keyBytes)] = value
+	}
+	return
+}
+
 // Encode encodes a value into the encoder.
 func (c *reflectMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	e.WriteUvarint(uint64(rv.Len()))
@@ -671,14 +944,15 @@ func (c *reflectMapCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		} else {
 			rv.Clear()
 		}
+		kv := reflect.New(t.Key()).Elem()
+		vv := reflect.New(vt).Elem()
 		for i := 0; i < int(l); i++ {
-
-			var kv reflect.Value
-			if kv, err = c.readKey(d, t.Key()); err != nil {
+			kv.SetZero()
+			if err = c.readKey(d, kv); err != nil {
 				return
 			}
 
-			vv := reflect.Indirect(reflect.New(vt))
+			vv.SetZero()
 			if err = c.val.DecodeTo(d, vv); err != nil {
 				return
 			}
@@ -715,39 +989,39 @@ func (c *reflectMapCodec) writeKey(e *Encoder, key reflect.Value) (err error) {
 }
 
 // Read key reads a key from the decoder
-func (c *reflectMapCodec) readKey(d *Decoder, keyType reflect.Type) (key reflect.Value, err error) {
-	switch keyType.Kind() {
+func (c *reflectMapCodec) readKey(d *Decoder, key reflect.Value) (err error) {
+	switch key.Kind() {
 
 	case reflect.Int16:
 		var v uint16
 		if v, err = d.ReadUint16(); err == nil {
-			key = reflect.ValueOf(int16(v))
+			key.SetInt(int64(int16(v)))
 		}
 	case reflect.Int32:
 		var v uint32
 		if v, err = d.ReadUint32(); err == nil {
-			key = reflect.ValueOf(int32(v))
+			key.SetInt(int64(int32(v)))
 		}
 	case reflect.Int64:
 		var v uint64
 		if v, err = d.ReadUint64(); err == nil {
-			key = reflect.ValueOf(int64(v))
+			key.SetInt(int64(v))
 		}
 
 	case reflect.Uint16:
 		var v uint16
 		if v, err = d.ReadUint16(); err == nil {
-			key = reflect.ValueOf(v)
+			key.SetUint(uint64(v))
 		}
 	case reflect.Uint32:
 		var v uint32
 		if v, err = d.ReadUint32(); err == nil {
-			key = reflect.ValueOf(v)
+			key.SetUint(uint64(v))
 		}
 	case reflect.Uint64:
 		var v uint64
 		if v, err = d.ReadUint64(); err == nil {
-			key = reflect.ValueOf(v)
+			key.SetUint(v)
 		}
 
 	// String keys must have max length of 65536
@@ -757,13 +1031,12 @@ func (c *reflectMapCodec) readKey(d *Decoder, keyType reflect.Type) (key reflect
 
 		if l, err = d.ReadUint16(); err == nil {
 			if b, err = d.Slice(int(l)); err == nil {
-				key = reflect.ValueOf(string(b))
+				key.SetString(string(b))
 			}
 		}
 
 	// Default to a reflect-based approach
 	default:
-		key = reflect.Indirect(reflect.New(keyType))
 		err = c.key.DecodeTo(d, key)
 	}
 	return

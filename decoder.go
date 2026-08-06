@@ -33,6 +33,7 @@ func Unmarshal(b []byte, v any) (err error) {
 // Decoder represents a binary decoder.
 type Decoder struct {
 	reader  reader
+	slice   *sliceReader
 	scratch [10]byte
 	last    reflect.Type
 	codec   Codec
@@ -40,7 +41,10 @@ type Decoder struct {
 
 // NewDecoder creates a binary decoder.
 func NewDecoder(r io.Reader) *Decoder {
-	return &Decoder{reader: newReader(r)}
+	reader := newReader(r)
+	d := &Decoder{reader: reader}
+	d.slice, _ = reader.(*sliceReader)
+	return d
 }
 
 // Decode decodes a value by reading from the underlying io.Reader.
@@ -67,23 +71,32 @@ func (d *Decoder) Decode(v any) (err error) {
 
 // Read reads a set of bytes
 func (d *Decoder) Read(b []byte) (int, error) {
+	if d.slice != nil {
+		return d.slice.Read(b)
+	}
 	return d.reader.Read(b)
 }
 
 // ReadUvarint reads a variable-length Uint64 from the buffer.
 func (d *Decoder) ReadUvarint() (uint64, error) {
+	if d.slice != nil {
+		return d.slice.ReadUvarint()
+	}
 	return d.reader.ReadUvarint()
 }
 
 // ReadVarint reads a variable-length Int64 from the buffer.
 func (d *Decoder) ReadVarint() (int64, error) {
+	if d.slice != nil {
+		return d.slice.ReadVarint()
+	}
 	return d.reader.ReadVarint()
 }
 
 // ReadUint16 reads a uint16
 func (d *Decoder) ReadUint16() (out uint16, err error) {
 	var b []byte
-	if b, err = d.reader.Slice(2); err == nil {
+	if b, err = d.Slice(2); err == nil {
 		_ = b[1] // bounds check hint to compiler
 		out = (uint16(b[0]) | uint16(b[1])<<8)
 	}
@@ -93,7 +106,7 @@ func (d *Decoder) ReadUint16() (out uint16, err error) {
 // ReadUint32 reads a uint32
 func (d *Decoder) ReadUint32() (out uint32, err error) {
 	var b []byte
-	if b, err = d.reader.Slice(4); err == nil {
+	if b, err = d.Slice(4); err == nil {
 		_ = b[3] // bounds check hint to compiler
 		out = (uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24)
 	}
@@ -103,7 +116,7 @@ func (d *Decoder) ReadUint32() (out uint32, err error) {
 // ReadUint64 reads a uint64
 func (d *Decoder) ReadUint64() (out uint64, err error) {
 	var b []byte
-	if b, err = d.reader.Slice(8); err == nil {
+	if b, err = d.Slice(8); err == nil {
 		_ = b[7] // bounds check hint to compiler
 		out = (uint64(b[0]) | uint64(b[1])<<8 | uint64(b[2])<<16 | uint64(b[3])<<24 |
 			uint64(b[4])<<32 | uint64(b[5])<<40 | uint64(b[6])<<48 | uint64(b[7])<<56)
@@ -131,6 +144,10 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 
 // ReadBool reads a single boolean value from the slice.
 func (d *Decoder) ReadBool() (bool, error) {
+	if d.slice != nil {
+		b, err := d.slice.ReadByte()
+		return b == 1, err
+	}
 	b, err := d.reader.ReadByte()
 	return b == 1, err
 }
@@ -164,12 +181,18 @@ func (d *Decoder) Slice(n int) ([]byte, error) {
 	if n < 0 {
 		return nil, io.ErrUnexpectedEOF
 	}
+	if d.slice != nil {
+		return d.slice.Slice(n)
+	}
 	return d.reader.Slice(n)
 }
 
 func (d *Decoder) readSlice(n uint64) ([]byte, error) {
 	if n > uint64(^uint(0)>>1) {
 		return nil, io.ErrUnexpectedEOF
+	}
+	if d.slice != nil {
+		return d.slice.Slice(int(n))
 	}
 	return d.reader.Slice(int(n))
 }

@@ -89,9 +89,9 @@ func scanSlice(t reflect.Type) (Codec, error) {
 	case reflect.Bool:
 		return new(boolSliceCodec), nil
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return new(varuintSliceCodec), nil
+		return &varuintSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return new(varintSliceCodec), nil
+		return &varintSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Ptr:
 		elemCodec, err := scanType(t.Elem().Elem())
 		if err != nil {
@@ -230,6 +230,13 @@ func newUnionCodec(arms []unionArm, maxTag uint64) *reflectUnionCodec {
 }
 
 func scanMap(t reflect.Type) (Codec, error) {
+	switch t {
+	case reflect.TypeFor[map[string][]byte]():
+		return new(stringBytesMapCodec), nil
+	case reflect.TypeFor[map[string]string]():
+		return new(stringStringMapCodec), nil
+	}
+
 	key, err := scanType(t.Key())
 	if err != nil {
 		return nil, err
