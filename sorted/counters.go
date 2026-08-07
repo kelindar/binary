@@ -57,8 +57,13 @@ func (tczCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 	}
 
 	// Current offset
-	offset := readDelta(result.Time, buffer[0:])
-	offset = readDelta(result.Data, buffer[offset:])
+	offset, err := readDelta(result.Time, buffer)
+	if err != nil {
+		return err
+	}
+	if _, err = readDelta(result.Data, buffer[offset:]); err != nil {
+		return err
+	}
 
 	rv.Set(reflect.ValueOf(result))
 	return nil

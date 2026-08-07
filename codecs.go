@@ -143,10 +143,11 @@ func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 	resizeSlice(rv, int(l))
 	for i := 0; i < int(l); i++ {
 		ptr := rv.Index(i)
-		if isNil, err = d.ReadBool(); err != nil {
+		isNil, err = d.ReadBool()
+		switch {
+		case err != nil:
 			return
-		}
-		if isNil {
+		case isNil:
 			ptr.SetZero()
 			continue
 		}
