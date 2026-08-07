@@ -620,11 +620,12 @@ type varuintSliceCodec struct {
 }
 
 // Encode encodes a value into the encoder.
-func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	return encodeVaruints(e, rv.UnsafePointer(), rv.Len(), c.elemSize)
+func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
+	encodeVaruints(e, rv.UnsafePointer(), rv.Len(), c.elemSize)
+	return nil
 }
 
-func encodeVaruints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) (err error) {
+func encodeVaruints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) {
 	e.WriteUvarint(uint64(l))
 	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
 		out.Grow(2 * l)
@@ -660,7 +661,6 @@ func encodeVaruints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) (e
 			e.WriteUvarint(v)
 		}
 	}
-	return
 }
 
 // Decode decodes into a reflect value from the decoder.
@@ -839,9 +839,7 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 				case fieldVaruint4:
 					size = 4
 				}
-				if err = encodeVaruints(e, sliceData(pointer), sliceLen(pointer), size); err != nil {
-					return
-				}
+				encodeVaruints(e, sliceData(pointer), sliceLen(pointer), size)
 			default:
 				if err = field.Codec.EncodeTo(e, rv.Field(i)); err != nil {
 					return
