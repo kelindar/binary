@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"reflect"
 	"unsafe"
 )
@@ -187,6 +188,64 @@ func (c *byteSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 
 // ------------------------------------------------------------------------------
 
+type stringSliceCodec struct{}
+
+// Encode encodes a value into the encoder.
+func (c *stringSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	if l >= 8 {
+		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+			size := uvarintSize(uint64(l))
+			for i := range l {
+				size += uvarintSize(uint64(rv.Index(i).Len())) + rv.Index(i).Len()
+			}
+			out.Grow(size)
+			buffer := out.AvailableBuffer()
+			buffer = binary.AppendUvarint(buffer, uint64(l))
+			for i := range l {
+				value := rv.Index(i).String()
+				buffer = binary.AppendUvarint(buffer, uint64(len(value)))
+				buffer = append(buffer, value...)
+			}
+			e.Write(buffer)
+			return
+		}
+	}
+	e.WriteUvarint(uint64(l))
+	for i := range l {
+		e.WriteString(rv.Index(i).String())
+	}
+	return
+}
+
+func uvarintSize(x uint64) int {
+	size := 1
+	for x >= 0x80 {
+		x >>= 7
+		size++
+	}
+	return size
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *stringSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	resizeSlice(rv, int(l))
+	for i := 0; i < int(l); i++ {
+		var value string
+		if value, err = d.ReadString(); err != nil {
+			return
+		}
+		rv.Index(i).SetString(value)
+	}
+	return
+}
+
+// ------------------------------------------------------------------------------
+
 type boolSliceCodec struct{}
 
 // Encode encodes a value into the encoder.
@@ -211,6 +270,163 @@ func (c *boolSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		}
 	}
 	return
+}
+
+// ------------------------------------------------------------------------------
+
+type floatSliceCodec struct {
+	elemSize uintptr
+}
+
+// Encode encodes a value into the encoder.
+func (c *floatSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	if l >= 8 {
+		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+			out.Grow(uvarintSize(uint64(l)) + l*int(c.elemSize))
+			buffer := out.AvailableBuffer()
+			buffer = binary.AppendUvarint(buffer, uint64(l))
+			switch c.elemSize {
+			case 4:
+				for _, value := range unsafe.Slice((*float32)(rv.UnsafePointer()), l) {
+					buffer = binary.LittleEndian.AppendUint32(buffer, math.Float32bits(value))
+				}
+			case 8:
+				for _, value := range unsafe.Slice((*float64)(rv.UnsafePointer()), l) {
+					buffer = binary.LittleEndian.AppendUint64(buffer, math.Float64bits(value))
+				}
+			}
+			e.Write(buffer)
+			return
+		}
+	}
+	e.WriteUvarint(uint64(l))
+	for i := range l {
+		if c.elemSize == 4 {
+			e.WriteFloat32(float32(rv.Index(i).Float()))
+		} else {
+			e.WriteFloat64(rv.Index(i).Float())
+		}
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *floatSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	maxInt := int(^uint(0) >> 1)
+	if l > uint64(maxInt) || int(l) > maxInt/int(c.elemSize) {
+		return io.ErrUnexpectedEOF
+	}
+	n := int(l)
+	resizeSlice(rv, n)
+	if n == 0 {
+		return nil
+	}
+	data, err := d.Slice(n * int(c.elemSize))
+	if err != nil {
+		return err
+	}
+	switch c.elemSize {
+	case 4:
+		values := unsafe.Slice((*float32)(rv.UnsafePointer()), n)
+		for i := range values {
+			values[i] = math.Float32frombits(binary.LittleEndian.Uint32(data[i*4:]))
+		}
+	case 8:
+		values := unsafe.Slice((*float64)(rv.UnsafePointer()), n)
+		for i := range values {
+			values[i] = math.Float64frombits(binary.LittleEndian.Uint64(data[i*8:]))
+		}
+	}
+	return nil
+}
+
+// ------------------------------------------------------------------------------
+
+type complexSliceCodec struct {
+	elemSize uintptr
+}
+
+// Encode encodes a value into the encoder.
+func (c *complexSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
+	l := rv.Len()
+	if l >= 8 {
+		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+			out.Grow(uvarintSize(uint64(l)) + l*int(c.elemSize))
+			buffer := out.AvailableBuffer()
+			buffer = binary.AppendUvarint(buffer, uint64(l))
+			switch c.elemSize {
+			case 8:
+				for _, value := range unsafe.Slice((*complex64)(rv.UnsafePointer()), l) {
+					buffer = binary.LittleEndian.AppendUint32(buffer, math.Float32bits(real(value)))
+					buffer = binary.LittleEndian.AppendUint32(buffer, math.Float32bits(imag(value)))
+				}
+			case 16:
+				for _, value := range unsafe.Slice((*complex128)(rv.UnsafePointer()), l) {
+					buffer = binary.LittleEndian.AppendUint64(buffer, math.Float64bits(real(value)))
+					buffer = binary.LittleEndian.AppendUint64(buffer, math.Float64bits(imag(value)))
+				}
+			}
+			e.Write(buffer)
+			return
+		}
+	}
+	e.WriteUvarint(uint64(l))
+	for i := range l {
+		value := rv.Index(i).Complex()
+		if c.elemSize == 8 {
+			e.writeComplex64(complex64(value))
+		} else {
+			e.writeComplex128(value)
+		}
+	}
+	return
+}
+
+// Decode decodes into a reflect value from the decoder.
+func (c *complexSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	maxInt := int(^uint(0) >> 1)
+	if l > uint64(maxInt) || int(l) > maxInt/int(c.elemSize) {
+		return io.ErrUnexpectedEOF
+	}
+	n := int(l)
+	resizeSlice(rv, n)
+	if n == 0 {
+		return nil
+	}
+	data, err := d.Slice(n * int(c.elemSize))
+	if err != nil {
+		return err
+	}
+	switch c.elemSize {
+	case 8:
+		values := unsafe.Slice((*complex64)(rv.UnsafePointer()), n)
+		for i := range values {
+			offset := i * 8
+			values[i] = complex(
+				math.Float32frombits(binary.LittleEndian.Uint32(data[offset:])),
+				math.Float32frombits(binary.LittleEndian.Uint32(data[offset+4:])),
+			)
+		}
+	case 16:
+		values := unsafe.Slice((*complex128)(rv.UnsafePointer()), n)
+		for i := range values {
+			offset := i * 16
+			values[i] = complex(
+				math.Float64frombits(binary.LittleEndian.Uint64(data[offset:])),
+				math.Float64frombits(binary.LittleEndian.Uint64(data[offset+8:])),
+			)
+		}
+	}
+	return nil
 }
 
 // ------------------------------------------------------------------------------
@@ -947,6 +1163,25 @@ type stringStringMapCodec struct{}
 
 func (stringStringMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	m := rv.Interface().(map[string]string)
+	if len(m) >= 8 {
+		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+			size := 10
+			for key, value := range m {
+				size += 2 + len(key) + 10 + len(value)
+			}
+			out.Grow(size)
+			buffer := out.AvailableBuffer()
+			buffer = binary.AppendUvarint(buffer, uint64(len(m)))
+			for key, value := range m {
+				buffer = append(buffer, byte(len(key)), byte(len(key)>>8))
+				buffer = append(buffer, key...)
+				buffer = binary.AppendUvarint(buffer, uint64(len(value)))
+				buffer = append(buffer, value...)
+			}
+			e.Write(buffer)
+			return
+		}
+	}
 	e.WriteUvarint(uint64(len(m)))
 	for key, value := range m {
 		e.WriteUint16(uint16(len(key)))

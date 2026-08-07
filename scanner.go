@@ -88,6 +88,12 @@ func scanSlice(t reflect.Type) (Codec, error) {
 		return new(byteSliceCodec), nil
 	case reflect.Bool:
 		return new(boolSliceCodec), nil
+	case reflect.String:
+		return new(stringSliceCodec), nil
+	case reflect.Float32, reflect.Float64:
+		return &floatSliceCodec{elemSize: t.Elem().Size()}, nil
+	case reflect.Complex64, reflect.Complex128:
+		return &complexSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return &varuintSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:

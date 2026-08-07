@@ -6,6 +6,7 @@ package binary
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -313,6 +314,21 @@ func TestDecodePopulatedMap(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestStringMapEncode(t *testing.T) {
+	for _, count := range []int{7, 8, 100} {
+		value := make(map[string]string, count)
+		for i := range count {
+			value[fmt.Sprintf("key-%d", i)] = fmt.Sprintf("value-%d", i)
+		}
+
+		encoded, err := Marshal(value)
+		assert.NoError(t, err)
+		var got map[string]string
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, value, got)
+	}
+}
+
 func TestNumericSlices(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -338,6 +354,36 @@ func TestNumericSlices(t *testing.T) {
 			got := reflect.New(reflect.TypeOf(tc.value))
 			assert.NoError(t, Unmarshal(want, got.Interface()))
 			assert.Equal(t, tc.value, got.Elem().Interface())
+		})
+	}
+}
+
+func TestFixedWidthSlices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{"float32", []float32{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}},
+		{"float64", []float64{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}},
+		{"complex64", []complex64{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}},
+		{"complex128", []complex128{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := Marshal(tc.value)
+			assert.NoError(t, err)
+
+			var writer bytes.Buffer
+			assert.NoError(t, MarshalTo(tc.value, &writer))
+			assert.Equal(t, want, writer.Bytes())
+
+			got := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, Unmarshal(want, got.Interface()))
+			assert.Equal(t, tc.value, got.Elem().Interface())
+
+			streamed := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, NewDecoder(bytes.NewReader(want)).Decode(streamed.Interface()))
+			assert.Equal(t, tc.value, streamed.Elem().Interface())
 		})
 	}
 }
