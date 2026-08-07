@@ -116,13 +116,23 @@ func (r *sliceReader) Slice(n int) ([]byte, error) {
 
 // ReadUvarint reads an encoded unsigned integer from r and returns it as a uint64.
 func (r *sliceReader) ReadUvarint() (uint64, error) {
-	var x uint64
-	for s := 0; s < maxVarintLen64; s += 7 {
+	if r.offset >= len(r.buffer) {
+		return 0, io.EOF
+	}
+
+	b := r.buffer[r.offset]
+	r.offset++
+	if b < 0x80 {
+		return uint64(b), nil
+	}
+
+	x := uint64(b & 0x7f)
+	for s := 7; s < maxVarintLen64; s += 7 {
 		if r.offset >= len(r.buffer) {
 			return 0, io.EOF
 		}
 
-		b := r.buffer[r.offset]
+		b = r.buffer[r.offset]
 		r.offset++
 		if b < 0x80 {
 			if s == maxVarintLen64-7 && b > 1 {
@@ -135,25 +145,46 @@ func (r *sliceReader) ReadUvarint() (uint64, error) {
 	return x, overflow
 }
 
-func readUvarints(r *sliceReader, values []uint64) error {
+type unsignedVarint interface {
+	~uint16 | ~uint32 | ~uint64
+}
+
+func readUvarints[T unsignedVarint](r *sliceReader, values []T) error {
 	buffer := r.buffer
 	offset := r.offset
 	for i := range values {
-		var x uint64
-		for s := 0; s < maxVarintLen64; s += 7 {
+		if offset >= len(buffer) {
+			r.offset = offset
+			return io.EOF
+		}
+
+		b := buffer[offset]
+		offset++
+		if b < 0x80 {
+			values[i] = T(b)
+			continue
+		}
+		if offset < len(buffer) && buffer[offset] < 0x80 {
+			values[i] = T(uint64(b&0x7f) | uint64(buffer[offset])<<7)
+			offset++
+			continue
+		}
+
+		x := uint64(b & 0x7f)
+		for s := 7; s < maxVarintLen64; s += 7 {
 			if offset >= len(buffer) {
 				r.offset = offset
 				return io.EOF
 			}
 
-			b := buffer[offset]
+			b = buffer[offset]
 			offset++
 			if b < 0x80 {
 				if s == maxVarintLen64-7 && b > 1 {
 					r.offset = offset
 					return overflow
 				}
-				values[i] = x | uint64(b)<<s
+				values[i] = T(x | uint64(b)<<s)
 				goto next
 			}
 			x |= uint64(b&0x7f) << s
@@ -167,14 +198,72 @@ func readUvarints(r *sliceReader, values []uint64) error {
 	return nil
 }
 
+type signedVarint interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+func readVarints[T signedVarint](r *sliceReader, values []T) error {
+	buffer := r.buffer
+	offset := r.offset
+	for i := range values {
+		if offset >= len(buffer) {
+			r.offset = offset
+			return io.EOF
+		}
+
+		b := buffer[offset]
+		offset++
+		if b < 0x80 {
+			values[i] = T(decodeVarint(uint64(b)))
+			continue
+		}
+		if offset < len(buffer) && buffer[offset] < 0x80 {
+			x := uint64(b&0x7f) | uint64(buffer[offset])<<7
+			offset++
+			values[i] = T(decodeVarint(x))
+			continue
+		}
+
+		x := uint64(b & 0x7f)
+		for s := 7; s < maxVarintLen64; s += 7 {
+			if offset >= len(buffer) {
+				r.offset = offset
+				return io.EOF
+			}
+
+			b = buffer[offset]
+			offset++
+			if b < 0x80 {
+				if s == maxVarintLen64-7 && b > 1 {
+					r.offset = offset
+					return overflow
+				}
+				values[i] = T(decodeVarint(x | uint64(b)<<s))
+				goto next
+			}
+			x |= uint64(b&0x7f) << s
+		}
+
+		r.offset = offset
+		return overflow
+	next:
+	}
+	r.offset = offset
+	return nil
+}
+
+func decodeVarint(x uint64) int64 {
+	v := int64(x >> 1)
+	if x&1 != 0 {
+		v = ^v
+	}
+	return v
+}
+
 // ReadVarint reads an encoded signed integer from r and returns it as an int64.
 func (r *sliceReader) ReadVarint() (int64, error) {
 	ux, err := r.ReadUvarint() // ok to continue in presence of error
-	x := int64(ux >> 1)
-	if ux&1 != 0 {
-		x = ^x
-	}
-	return x, err
+	return decodeVarint(ux), err
 }
 
 // Reset resets the Reader to be reading from b.

@@ -6,6 +6,8 @@ package binary
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -313,6 +315,21 @@ func TestDecodePopulatedMap(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestStringMapEncode(t *testing.T) {
+	for _, count := range []int{7, 8, 100} {
+		value := make(map[string]string, count)
+		for i := range count {
+			value[fmt.Sprintf("key-%d", i)] = fmt.Sprintf("value-%d", i)
+		}
+
+		encoded, err := Marshal(value)
+		assert.NoError(t, err)
+		var got map[string]string
+		assert.NoError(t, Unmarshal(encoded, &got))
+		assert.Equal(t, value, got)
+	}
+}
+
 func TestNumericSlices(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -342,6 +359,100 @@ func TestNumericSlices(t *testing.T) {
 	}
 }
 
+func TestFixedWidthSlices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{"float32", []float32{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}},
+		{"float64", []float64{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}},
+		{"complex64", []complex64{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}},
+		{"complex128", []complex128{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := Marshal(tc.value)
+			assert.NoError(t, err)
+
+			var writer bytes.Buffer
+			assert.NoError(t, MarshalTo(tc.value, &writer))
+			assert.Equal(t, want, writer.Bytes())
+
+			got := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, Unmarshal(want, got.Interface()))
+			assert.Equal(t, tc.value, got.Elem().Interface())
+
+			streamed := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, NewDecoder(bytes.NewReader(want)).Decode(streamed.Interface()))
+			assert.Equal(t, tc.value, streamed.Elem().Interface())
+		})
+	}
+}
+
+func TestStringSlice(t *testing.T) {
+	value := make([]string, 8)
+	value[0] = string(bytes.Repeat([]byte{'x'}, 128))
+	for i := 1; i < len(value); i++ {
+		value[i] = fmt.Sprintf("value-%d", i)
+	}
+
+	encoded, err := Marshal(value)
+	assert.NoError(t, err)
+
+	var got []string
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Equal(t, value, got)
+}
+
+func TestFixedWidthErrors(t *testing.T) {
+	length := append(bytes.Repeat([]byte{0x80}, 9), 1)
+
+	var floats []float32
+	assert.Equal(t, io.ErrUnexpectedEOF, Unmarshal(length, &floats))
+
+	var complexValues []complex128
+	assert.Equal(t, io.ErrUnexpectedEOF, Unmarshal(length, &complexValues))
+	assert.Equal(t, io.EOF, Unmarshal([]byte{0x80}, &complexValues))
+
+	var empty []complex64
+	assert.NoError(t, Unmarshal([]byte{0}, &empty))
+	assert.Equal(t, io.EOF, Unmarshal([]byte{1}, &complexValues))
+}
+
+func TestComplexFallback(t *testing.T) {
+	assert.NoError(t, MarshalTo([]complex64{1 + 2i}, io.Discard))
+	assert.NoError(t, MarshalTo([]complex128{1 + 2i}, io.Discard))
+}
+
+func TestFixedWidthArrays(t *testing.T) {
+	float32Values := [9]float32{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}
+	floatValues := [9]float64{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}
+	complex64Values := [9]complex64{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}
+	complexValues := [9]complex128{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}
+	stringValues := [9]string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+	tests := []struct {
+		value   any
+		pointer any
+		out     any
+	}{
+		{float32Values, &float32Values, new([9]float32)},
+		{floatValues, &floatValues, new([9]float64)},
+		{complex64Values, &complex64Values, new([9]complex64)},
+		{complexValues, &complexValues, new([9]complex128)},
+		{stringValues, &stringValues, new([9]string)},
+	}
+	for _, tc := range tests {
+		encoded, err := Marshal(tc.pointer)
+		assert.NoError(t, err)
+		assert.NoError(t, Unmarshal(encoded, tc.out))
+		assert.Equal(t, tc.value, reflect.ValueOf(tc.out).Elem().Interface())
+
+		valueEncoded, err := Marshal(tc.value)
+		assert.NoError(t, err)
+		assert.Equal(t, encoded, valueEncoded)
+	}
+}
+
 func TestMapDecode(t *testing.T) {
 	data := append([]byte{1, 0, 0}, bytes.Repeat([]byte{0xff}, 9)...)
 	data = append(data, 1)
@@ -363,6 +474,61 @@ func TestMapDecode(t *testing.T) {
 	strings = map[string]string{"stale": "value"}
 	assert.NoError(t, Unmarshal(encoded, &strings))
 	assert.Equal(t, map[string]string{"fresh": "value"}, strings)
+}
+
+func TestNumericMapWire(t *testing.T) {
+	u64s := make(map[uint64]uint64, 8)
+	strings := make(map[string]uint64, 8)
+	for i := range 8 {
+		u64s[uint64(i)] = uint64(i + 1)
+		strings[fmt.Sprintf("key-%d", i)] = uint64(i + 1)
+	}
+	smallStrings := map[string]uint64{"small": 1}
+	tests := []any{u64s, strings, smallStrings}
+	for _, value := range tests {
+		encoded, err := Marshal(value)
+		assert.NoError(t, err)
+
+		got := reflect.New(reflect.TypeOf(value))
+		assert.NoError(t, Unmarshal(encoded, got.Interface()))
+		assert.Equal(t, value, got.Elem().Interface())
+	}
+
+	encoded, err := Marshal(u64s)
+	assert.NoError(t, err)
+	reusedU64s := map[uint64]uint64{99: 99}
+	assert.NoError(t, Unmarshal(encoded, &reusedU64s))
+	assert.Equal(t, u64s, reusedU64s)
+
+	encoded, err = Marshal(smallStrings)
+	assert.NoError(t, err)
+	reusedStrings := map[string]uint64{"stale": 99}
+	assert.NoError(t, Unmarshal(encoded, &reusedStrings))
+	assert.Equal(t, smallStrings, reusedStrings)
+
+	for _, data := range [][]byte{{}, {1}, {1, 1, 0}, {1, 0, 0}} {
+		var got map[string]uint64
+		assert.Error(t, Unmarshal(data, &got))
+	}
+}
+
+func TestSliceReuse(t *testing.T) {
+	type value struct {
+		Name   string
+		Bytes  []byte
+		Values []uint32
+	}
+
+	want := value{Name: "value", Bytes: []byte{1, 2, 3}, Values: []uint32{4, 5, 6}}
+	encoded, err := Marshal(want)
+	assert.NoError(t, err)
+
+	got := value{
+		Bytes:  make([]byte, 0, len(want.Bytes)),
+		Values: make([]uint32, 0, len(want.Values)),
+	}
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Equal(t, want, got)
 }
 
 func TestCustomDecode(t *testing.T) {
@@ -565,6 +731,19 @@ func testStructArray(t *testing.T) {
 	if !reflect.DeepEqual(s, v) {
 		t.Fatalf("got= %#v\nwant=%#v\n", v, s)
 	}
+}
+
+func TestArrayOfPointers(t *testing.T) {
+	type item struct {
+		Value uint64
+	}
+	want := [2]*item{{Value: 1}, nil}
+	data, err := Marshal(&want)
+	assert.NoError(t, err)
+
+	var got [2]*item
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Equal(t, want, got)
 }
 
 func testStructSlice(t *testing.T) {

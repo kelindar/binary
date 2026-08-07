@@ -117,6 +117,12 @@ func (e *Encoder) WriteVarint(v int64) {
 
 // WriteUvarint writes a variable size unsigned integer
 func (e *Encoder) WriteUvarint(x uint64) {
+	if x < 0x80 {
+		e.scratch[0] = byte(x)
+		e.Write(e.scratch[:1])
+		return
+	}
+
 	i := 0
 	for x >= 0x80 {
 		e.scratch[i] = byte(x) | 0x80

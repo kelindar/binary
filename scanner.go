@@ -75,6 +75,9 @@ func scanPointer(t reflect.Type) (Codec, error) {
 }
 
 func scanArray(t reflect.Type) (Codec, error) {
+	if codec := scanFixedWidth(t.Elem(), true); codec != nil {
+		return codec, nil
+	}
 	elemCodec, err := scanType(t.Elem())
 	if err != nil {
 		return nil, err
@@ -83,6 +86,9 @@ func scanArray(t reflect.Type) (Codec, error) {
 }
 
 func scanSlice(t reflect.Type) (Codec, error) {
+	if codec := scanFixedWidth(t.Elem(), false); codec != nil {
+		return codec, nil
+	}
 	switch t.Elem().Kind() {
 	case reflect.Uint8:
 		return new(byteSliceCodec), nil
@@ -107,6 +113,19 @@ func scanSlice(t reflect.Type) (Codec, error) {
 			return nil, err
 		}
 		return &reflectSliceCodec{elemCodec: elemCodec}, nil
+	}
+}
+
+func scanFixedWidth(elem reflect.Type, array bool) Codec {
+	switch elem {
+	case reflect.TypeFor[string]():
+		return &stringSliceCodec{array: array}
+	case reflect.TypeFor[float32](), reflect.TypeFor[float64]():
+		return &floatSliceCodec{elemSize: elem.Size(), array: array}
+	case reflect.TypeFor[complex64](), reflect.TypeFor[complex128]():
+		return &complexSliceCodec{elemSize: elem.Size(), array: array}
+	default:
+		return nil
 	}
 }
 
@@ -198,6 +217,17 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			*complex64Codec, *complex128Codec, *float32Codec, *float64Codec:
 			kind = field.Type.Kind()
 			hasDirect = true
+		case *varuintSliceCodec:
+			switch codec.(*varuintSliceCodec).elemSize {
+			case 2:
+				kind = fieldVaruint2
+			case 4:
+				kind = fieldVaruint4
+			case 8:
+				kind = fieldVaruint8
+			}
+		case *byteSliceCodec:
+			kind = fieldByteSlice
 		}
 		packed := uint64(field.Offset) |
 			uint64(kind)<<fieldKindShift |
@@ -235,6 +265,10 @@ func scanMap(t reflect.Type) (Codec, error) {
 		return new(stringBytesMapCodec), nil
 	case reflect.TypeFor[map[string]string]():
 		return new(stringStringMapCodec), nil
+	case reflect.TypeFor[map[uint64]uint64]():
+		return new(uint64MapCodec), nil
+	case reflect.TypeFor[map[string]uint64]():
+		return new(stringUint64MapCodec), nil
 	}
 
 	key, err := scanType(t.Key())

@@ -24,6 +24,7 @@ func main() {
 	},
 		bench.WithSamples(100),
 		bench.WithDuration(10*time.Millisecond),
+		bench.WithReference("bench-master.gob"),
 	)
 }
 
@@ -98,11 +99,17 @@ func runBinarySlice(b *bench.B) {
 			Ssid:      []uint32{uint32(i), uint32(i + 1), uint32(i + 2)},
 		}
 	}
+	var array [100]msg
+	copy(array[:], v)
 	enc, _ := binary.Marshal(&v)
+	arrayEnc, _ := binary.Marshal(&array)
 	var out []msg
+	var arrayOut [100]msg
 
 	b.Run("binary/slice-enc", func(int) { binary.Marshal(&v) })
 	b.Run("binary/slice-dec", func(int) { binary.Unmarshal(enc, &out) })
+	b.Run("binary/array-enc", func(int) { binary.Marshal(&array) })
+	b.Run("binary/array-dec", func(int) { binary.Unmarshal(arrayEnc, &arrayOut) })
 }
 
 func runBinaryNested(b *bench.B) {

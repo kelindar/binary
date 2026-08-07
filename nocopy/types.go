@@ -4,6 +4,8 @@
 package nocopy
 
 import (
+	"bytes"
+	bin "encoding/binary"
 	"encoding/json"
 	"reflect"
 	"unsafe"
@@ -358,6 +360,25 @@ type byteMapCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *byteMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	dict := rv.Interface().(ByteMap)
+	if len(dict) >= 8 {
+		if out, ok := e.Buffer().(*bytes.Buffer); ok {
+			size := 2
+			for key, value := range dict {
+				size += uvarintSize(uint64(len(key))) + len(key) + uvarintSize(uint64(len(value))) + len(value)
+			}
+			out.Grow(size)
+			buffer := out.AvailableBuffer()
+			buffer = append(buffer, byte(len(dict)), byte(len(dict)>>8))
+			for key, value := range dict {
+				buffer = bin.AppendUvarint(buffer, uint64(len(key)))
+				buffer = append(buffer, key...)
+				buffer = bin.AppendUvarint(buffer, uint64(len(value)))
+				buffer = append(buffer, value...)
+			}
+			e.Write(buffer)
+			return
+		}
+	}
 	e.WriteUint16(uint16(len(dict)))
 	for k, v := range dict {
 		encodeString(e, k)
@@ -395,6 +416,24 @@ type hashMapCodec struct{}
 // Encode encodes a value into the encoder.
 func (c *hashMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	dict := rv.Interface().(HashMap)
+	if len(dict) >= 8 {
+		if out, ok := e.Buffer().(*bytes.Buffer); ok {
+			size := 4
+			for _, value := range dict {
+				size += 12 + len(value)
+			}
+			out.Grow(size)
+			buffer := out.AvailableBuffer()
+			buffer = bin.LittleEndian.AppendUint32(buffer, uint32(len(dict)))
+			for key, value := range dict {
+				buffer = bin.LittleEndian.AppendUint64(buffer, key)
+				buffer = bin.LittleEndian.AppendUint32(buffer, uint32(len(value)))
+				buffer = append(buffer, value...)
+			}
+			e.Write(buffer)
+			return
+		}
+	}
 	e.WriteUint32(uint32(len(dict)))
 	for k, v := range dict {
 		e.WriteUint64(k)
@@ -453,6 +492,15 @@ func (c *dictionaryCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err err
 		}
 	}
 	return
+}
+
+func uvarintSize(x uint64) int {
+	size := 1
+	for x >= 0x80 {
+		x >>= 7
+		size++
+	}
+	return size
 }
 
 // encodeString writes a string to the encoder

@@ -46,6 +46,15 @@ func TestReaderOverflow(t *testing.T) {
 	}
 }
 
+func TestBulkUvarints(t *testing.T) {
+	var out []uint32
+	assert.NoError(t, Unmarshal([]byte{3, 1, 0x80, 1, 0xff, 1}, &out))
+	assert.Equal(t, []uint32{1, 128, 255}, out)
+
+	assert.Equal(t, io.EOF, Unmarshal([]byte{1, 0x80}, &out))
+	assert.Equal(t, overflow, Unmarshal(append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...), &out))
+}
+
 func TestBulkUvarintOverflow(t *testing.T) {
 	tests := map[string][]byte{
 		"too long":  append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...),
@@ -55,6 +64,43 @@ func TestBulkUvarintOverflow(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			var out []uint64
 			assert.Equal(t, overflow, Unmarshal(data, &out))
+		})
+	}
+}
+
+func TestBulkVarints(t *testing.T) {
+	input := []int32{-64, -1, 0, 1, 64}
+	data, err := Marshal(&input)
+	assert.NoError(t, err)
+
+	var output []int32
+	assert.NoError(t, Unmarshal(data, &output))
+	assert.Equal(t, input, output)
+	assert.Equal(t, io.EOF, Unmarshal([]byte{1, 0x80}, &output))
+	assert.Equal(t, overflow, Unmarshal(append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...), &output))
+	data = append([]byte{1}, bytes.Repeat([]byte{0x80}, 9)...)
+	data = append(data, 2)
+	var overflowOutput []int64
+	assert.Equal(t, overflow, Unmarshal(data, &overflowOutput))
+}
+
+func TestStreamSliceErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		out  any
+	}{
+		{"int8", new([]int8)},
+		{"int16", new([]int16)},
+		{"int32", new([]int32)},
+		{"int64", new([]int64)},
+		{"uint16", new([]uint16)},
+		{"uint32", new([]uint32)},
+		{"uint64", new([]uint64)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := NewDecoder(bytes.NewReader([]byte{1})).Decode(tc.out)
+			assert.Equal(t, io.EOF, err)
 		})
 	}
 }
