@@ -55,7 +55,7 @@ func newReader(r io.Reader) reader {
 // sliceReader implements a reader that only reads from a slice
 type sliceReader struct {
 	buffer []byte
-	offset int64 // current reading index
+	offset int // current reading index
 }
 
 // newSliceReader returns a new Reader reading from b.
@@ -66,10 +66,10 @@ func newSliceReader(b []byte) *sliceReader {
 // Len returns the number of bytes of the unread portion of the
 // slice.
 func (r *sliceReader) Len() int {
-	if r.offset >= int64(len(r.buffer)) {
+	if r.offset >= len(r.buffer) {
 		return 0
 	}
-	return int(int64(len(r.buffer)) - r.offset)
+	return len(r.buffer) - r.offset
 }
 
 // Size returns the original length of the underlying byte slice.
@@ -80,18 +80,18 @@ func (r *sliceReader) Size() int64 { return int64(len(r.buffer)) }
 
 // Read implements the io.Reader interface.
 func (r *sliceReader) Read(b []byte) (n int, err error) {
-	if r.offset >= int64(len(r.buffer)) {
+	if r.offset >= len(r.buffer) {
 		return 0, io.EOF
 	}
 
 	n = copy(b, r.buffer[r.offset:])
-	r.offset += int64(n)
+	r.offset += n
 	return
 }
 
 // ReadByte implements the io.ByteReader interface.
 func (r *sliceReader) ReadByte() (byte, error) {
-	if r.offset >= int64(len(r.buffer)) {
+	if r.offset >= len(r.buffer) {
 		return 0, io.EOF
 	}
 
@@ -105,12 +105,12 @@ func (r *sliceReader) ReadByte() (byte, error) {
 // returns a sub-slice pointing to the same array. Since this requires access
 // to the underlying data, this is only available for our default reader.
 func (r *sliceReader) Slice(n int) ([]byte, error) {
-	if uint64(n) > uint64(len(r.buffer))-uint64(r.offset) {
+	if n < 0 || n > len(r.buffer)-r.offset {
 		return nil, io.EOF
 	}
 
 	cur := r.offset
-	r.offset += int64(n)
+	r.offset += n
 	return r.buffer[cur:r.offset], nil
 }
 
@@ -118,7 +118,7 @@ func (r *sliceReader) Slice(n int) ([]byte, error) {
 func (r *sliceReader) ReadUvarint() (uint64, error) {
 	var x uint64
 	for s := 0; s < maxVarintLen64; s += 7 {
-		if r.offset >= int64(len(r.buffer)) {
+		if r.offset >= len(r.buffer) {
 			return 0, io.EOF
 		}
 

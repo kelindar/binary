@@ -43,10 +43,10 @@ func (c *reflectUnionCodec) lookup(tag uint64) *unionArm {
 
 func (c *reflectUnionCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	selected, elem := c.findArm(rv)
-	if selected == &errArm {
+	switch selected {
+	case &errArm:
 		return ErrMultipleArms
-	}
-	if selected == nil {
+	case nil:
 		e.WriteTagged(0, nil)
 		return e.err
 	}

@@ -80,6 +80,16 @@ func (s *s2) MarshalBinary() (data []byte, err error) {
 	return s.b, nil
 }
 
+type failingBinary struct{}
+
+func (failingBinary) MarshalBinary() ([]byte, error) {
+	return nil, errors.New("encode failed")
+}
+
+func (*failingBinary) UnmarshalBinary([]byte) error {
+	return nil
+}
+
 func TestMarshal(t *testing.T) {
 	tests := map[string]func(*testing.T){
 		"time slice":          testMarshalTimeSlice,
@@ -239,6 +249,50 @@ func TestDecodeEmptySlices(t *testing.T) {
 	assert.Empty(t, got)
 }
 
+func TestPointerSliceReuse(t *testing.T) {
+	type item struct {
+		Value int64
+	}
+
+	first, err := Marshal([]*item{{Value: 1}, {Value: 2}})
+	assert.NoError(t, err)
+	second, err := Marshal([]*item{nil, {Value: 3}})
+	assert.NoError(t, err)
+
+	got := []*item{{Value: 9}, {Value: 8}}
+	assert.NoError(t, Unmarshal(first, &got))
+	reused := got[1]
+	assert.NoError(t, Unmarshal(second, &got))
+	assert.Nil(t, got[0])
+	if got[1] != reused {
+		t.Fatalf("pointer was not reused: got %p want %p", got[1], reused)
+	}
+	assert.Equal(t, int64(3), got[1].Value)
+
+	empty, err := Marshal([]*item{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(empty, &got))
+	assert.Empty(t, got)
+
+	for _, data := range [][]byte{{}, {1}, {1, 0}} {
+		assert.Error(t, Unmarshal(data, &got))
+	}
+}
+
+func TestPointerClear(t *testing.T) {
+	type item struct {
+		Value *int64
+	}
+
+	value := int64(1)
+	encoded, err := Marshal(item{})
+	assert.NoError(t, err)
+
+	got := item{Value: &value}
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Nil(t, got.Value)
+}
+
 func TestDecodePopulatedMap(t *testing.T) {
 	want := map[string][]byte{
 		"first":  []byte("one"),
@@ -257,6 +311,88 @@ func TestDecodePopulatedMap(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, Unmarshal(encoded, &got))
 	assert.Empty(t, got)
+}
+
+func TestNumericSlices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+	}{
+		{"int8", []int8{-2, 0, 2}},
+		{"int16", []int16{-2, 0, 2}},
+		{"int32", []int32{-2, 0, 2}},
+		{"int64", []int64{-2, 0, 2}},
+		{"uint16", []uint16{0, 127, 128}},
+		{"uint32", []uint32{0, 127, 128}},
+		{"uint64", []uint64{0, 127, 128}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want, err := Marshal(tc.value)
+			assert.NoError(t, err)
+
+			var writer struct{ bytes.Buffer }
+			assert.NoError(t, MarshalTo(tc.value, &writer))
+			assert.Equal(t, want, writer.Bytes())
+
+			got := reflect.New(reflect.TypeOf(tc.value))
+			assert.NoError(t, Unmarshal(want, got.Interface()))
+			assert.Equal(t, tc.value, got.Elem().Interface())
+		})
+	}
+}
+
+func TestMapDecode(t *testing.T) {
+	data := append([]byte{1, 0, 0}, bytes.Repeat([]byte{0xff}, 9)...)
+	data = append(data, 1)
+
+	var got map[string][]byte
+	for _, data := range [][]byte{{}, {1}, {1, 1, 0}, {1, 0, 0}} {
+		assert.Error(t, Unmarshal(data, &got))
+	}
+	assert.Error(t, Unmarshal(data, &got))
+	assert.Error(t, Unmarshal([]byte{1, 0, 0, 1}, &got))
+
+	var strings map[string]string
+	for _, data := range [][]byte{{}, {1}, {1, 1, 0}, {1, 0, 0}} {
+		assert.Error(t, Unmarshal(data, &strings))
+	}
+
+	encoded, err := Marshal(map[string]string{"fresh": "value"})
+	assert.NoError(t, err)
+	strings = map[string]string{"stale": "value"}
+	assert.NoError(t, Unmarshal(encoded, &strings))
+	assert.Equal(t, map[string]string{"fresh": "value"}, strings)
+}
+
+func TestCustomDecode(t *testing.T) {
+	type payload struct {
+		Value *s2
+	}
+
+	data, err := Marshal(payload{Value: &s2{b: []byte{0x13}}})
+	assert.NoError(t, err)
+
+	got := payload{Value: &s2{b: []byte{0x99}}}
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Equal(t, []byte{0x13}, got.Value.b)
+
+	data, err = Marshal(payload{})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Nil(t, got.Value)
+}
+
+func TestPointerEncodeError(t *testing.T) {
+	type inner struct {
+		Value failingBinary
+	}
+	type outer struct {
+		Value *inner
+	}
+
+	_, err := Marshal(outer{Value: &inner{}})
+	assert.Error(t, err)
 }
 
 func testMarshalComplexStruct(t *testing.T) {
@@ -315,13 +451,13 @@ func testMarshalBigStruct(t *testing.T) {
 
 func TestStruct(t *testing.T) {
 	tests := map[string]func(*testing.T){
-		"nested fields":         testStructNestedFields,
-		"embedded struct":       testStructEmbedded,
-		"array of struct":       testStructArray,
-		"slice of struct":       testStructSlice,
-		"trace slice wire":      testStructTraceSliceWire,
+		"nested fields":            testStructNestedFields,
+		"embedded struct":          testStructEmbedded,
+		"array of struct":          testStructArray,
+		"slice of struct":          testStructSlice,
+		"trace slice wire":         testStructTraceSliceWire,
 		"decode error keeps field": testStructDecodeErrorKeepsField,
-		"custom field codec":    testStructCustomFieldCodec,
+		"custom field codec":       testStructCustomFieldCodec,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -776,8 +912,8 @@ func testPointerTimeSlice(t *testing.T) {
 
 func TestStructUintComplex(t *testing.T) {
 	type allTypes struct {
-		U   uint
-		C64 complex64
+		U    uint
+		C64  complex64
 		C128 complex128
 	}
 	in := allTypes{U: 42, C64: 1 + 2i, C128: 3 + 4i}
@@ -856,6 +992,11 @@ func TestSliceEncodeError(t *testing.T) {
 	var out2 []uint64
 	assert.NoError(t, Unmarshal(b2, &out2))
 	assert.Equal(t, v2, out2)
+
+	_, err = Marshal([1]failingBinary{{}})
+	assert.Error(t, err)
+	_, err = Marshal([]failingBinary{{}})
+	assert.Error(t, err)
 }
 
 func TestMapEncodeError(t *testing.T) {
@@ -863,9 +1004,14 @@ func TestMapEncodeError(t *testing.T) {
 	b, err := Marshal(&v)
 	assert.NoError(t, err)
 
-	var out map[int]string
+	out := map[int]string{99: "stale"}
 	assert.NoError(t, Unmarshal(b, &out))
 	assert.Equal(t, v, out)
+
+	_, err = Marshal(map[failingBinary]string{failingBinary{}: "value"})
+	assert.Error(t, err)
+	_, err = Marshal(map[string]failingBinary{"key": {}})
+	assert.Error(t, err)
 }
 
 func TestEncoderBuffer(t *testing.T) {

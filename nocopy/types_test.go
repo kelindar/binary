@@ -6,6 +6,7 @@ package nocopy
 import (
 	"bytes"
 	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/kelindar/binary"
@@ -32,7 +33,6 @@ func TestJSON(t *testing.T) {
 	encoded[len(encoded)-1] = '!'
 	assert.Equal(t, byte('!'), decoded[len(decoded)-1])
 }
-
 
 type composite map[string]column
 
@@ -174,6 +174,29 @@ func TestTypes(t *testing.T) {
 		assert.NoError(t, binary.NewDecoder(bytes.NewReader(data)).Decode(&got))
 		assert.Equal(t, want, got)
 	})
+}
+
+func TestSort(t *testing.T) {
+	tests := map[string]struct {
+		value sort.Interface
+		want  sort.Interface
+	}{
+		"uint16":  {Uint16s{4, 1, 3, 2}, Uint16s{1, 2, 3, 4}},
+		"int16":   {Int16s{4, 1, 3, 2}, Int16s{1, 2, 3, 4}},
+		"uint32":  {Uint32s{4, 1, 3, 2}, Uint32s{1, 2, 3, 4}},
+		"int32":   {Int32s{4, 1, 3, 2}, Int32s{1, 2, 3, 4}},
+		"uint64":  {Uint64s{4, 1, 3, 2}, Uint64s{1, 2, 3, 4}},
+		"int64":   {Int64s{4, 1, 3, 2}, Int64s{1, 2, 3, 4}},
+		"float32": {Float32s{4, 1, 3, 2}, Float32s{1, 2, 3, 4}},
+		"float64": {Float64s{4, 1, 3, 2}, Float64s{1, 2, 3, 4}},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			sort.Sort(tc.value)
+			assert.Equal(t, tc.want, tc.value)
+		})
+	}
 }
 
 func deref(v any) any {

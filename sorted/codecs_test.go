@@ -29,3 +29,26 @@ func TestInvalidVarint(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeShort(t *testing.T) {
+	tests := map[string]any{
+		"timestamps":    new(Timestamps),
+		"time series":   new(TimeSeries),
+		"time counters": new(TimeCounters),
+	}
+	data := map[string][]byte{
+		"missing count":   {},
+		"missing size":    {1},
+		"missing payload": {1, 1},
+	}
+
+	for name, out := range tests {
+		t.Run(name, func(t *testing.T) {
+			for name, input := range data {
+				t.Run(name, func(t *testing.T) {
+					assert.Error(t, binary.Unmarshal(input, out))
+				})
+			}
+		})
+	}
+}
