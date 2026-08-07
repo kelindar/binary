@@ -78,6 +78,31 @@ func TestBulkVarints(t *testing.T) {
 	assert.Equal(t, input, output)
 	assert.Equal(t, io.EOF, Unmarshal([]byte{1, 0x80}, &output))
 	assert.Equal(t, overflow, Unmarshal(append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...), &output))
+	data = append([]byte{1}, bytes.Repeat([]byte{0x80}, 9)...)
+	data = append(data, 2)
+	var overflowOutput []int64
+	assert.Equal(t, overflow, Unmarshal(data, &overflowOutput))
+}
+
+func TestStreamSliceErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		out  any
+	}{
+		{"int8", new([]int8)},
+		{"int16", new([]int16)},
+		{"int32", new([]int32)},
+		{"int64", new([]int64)},
+		{"uint16", new([]uint16)},
+		{"uint32", new([]uint32)},
+		{"uint64", new([]uint64)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := NewDecoder(bytes.NewReader([]byte{1})).Decode(tc.out)
+			assert.Equal(t, io.EOF, err)
+		})
+	}
 }
 
 func TestStreamReader(t *testing.T) {

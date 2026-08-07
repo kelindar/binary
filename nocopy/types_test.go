@@ -40,6 +40,7 @@ func TestLargeMapWire(t *testing.T) {
 	for i := range 8 {
 		bytesMap[strconv.Itoa(i)] = []byte(strconv.Itoa(i + 10))
 	}
+	bytesMap[string(bytes.Repeat([]byte{'k'}, 128))] = bytes.Repeat([]byte{'v'}, 128)
 	var decodedBytes ByteMap
 	encoded, err := binary.Marshal(bytesMap)
 	assert.NoError(t, err)
