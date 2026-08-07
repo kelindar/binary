@@ -4,7 +4,6 @@
 package sorted
 
 import (
-	bin "encoding/binary"
 	"math"
 	"math/bits"
 	"reflect"
@@ -36,7 +35,7 @@ func (tszCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 		curr := uint64(bits.Reverse32(math.Float32bits(float32(v))))
 		diff := curr ^ prev
 		prev = curr
-		buffer = bin.AppendUvarint(buffer, diff)
+		buffer = appendUvarint(buffer, diff)
 	}
 
 	// Writhe the size and the buffer
@@ -73,16 +72,32 @@ func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 		Data: make([]float64, count),
 	}
 
-	offset := readDelta(result.Time, buffer[0:])
-	d.ReadUvarint()
+	offset, err := readDelta(result.Time, buffer)
+	if err != nil {
+		return err
+	}
 
 	// Read encoded values
 	prev := uint64(0)
 	for i := 0; i < int(count); i++ {
-		diff, n := bin.Uvarint(buffer[offset:])
+		var diff uint64
+		for shift := uint(0); shift < 64; shift += 7 {
+			if offset >= len(buffer) {
+				return errInvalidVarint
+			}
+			b := buffer[offset]
+			offset++
+			if shift == 63 && b > 1 {
+				return errInvalidVarint
+			}
+			diff |= uint64(b&0x7f) << shift
+			if b < 0x80 {
+				goto value
+			}
+		}
+	value:
 		prev ^= diff
 		result.Data[i] = float64(math.Float32frombits(bits.Reverse32(uint32(prev))))
-		offset += n
 	}
 
 	rv.Set(reflect.ValueOf(result))
@@ -97,27 +112,43 @@ func appendDelta(dst []byte, data []uint64) []byte {
 	for i := range data {
 		diff := data[i] - prev
 		prev = data[i]
-
-		// Inlined AppendUvarint(dst, diff)
-		for diff >= 0x80 {
-			dst = append(dst, byte(diff)|0x80)
-			diff >>= 7
-		}
-		dst = append(dst, byte(diff))
+		dst = appendUvarint(dst, diff)
 	}
 
 	return dst
 }
 
+func appendUvarint(dst []byte, value uint64) []byte {
+	for value >= 0x80 {
+		dst = append(dst, byte(value)|0x80)
+		value >>= 7
+	}
+	return append(dst, byte(value))
+}
+
 // readDelta reads a delta array from the buffer
-func readDelta(dst []uint64, src []byte) (read int) {
+func readDelta(dst []uint64, src []byte) (read int, err error) {
 	prev := uint64(0)
 	for i := range dst {
-		diff, n := bin.Uvarint(src[read:])
-		prev = prev + diff
-		dst[i] = prev
-		read += n
+		var diff uint64
+		for shift := uint(0); shift < 64; shift += 7 {
+			if read >= len(src) {
+				return read, errInvalidVarint
+			}
+			b := src[read]
+			read++
+			if shift == 63 && b > 1 {
+				return read, errInvalidVarint
+			}
+			diff |= uint64(b&0x7f) << shift
+			if b < 0x80 {
+				prev += diff
+				dst[i] = prev
+				goto next
+			}
+		}
+	next:
 	}
 
-	return read
+	return read, nil
 }

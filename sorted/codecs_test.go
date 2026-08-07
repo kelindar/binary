@@ -4,11 +4,25 @@
 package sorted
 
 import (
+	"bytes"
+	"reflect"
 	"testing"
 
 	"github.com/kelindar/binary"
 	"github.com/stretchr/testify/assert"
 )
+
+type testInt8s []int8
+
+func (s testInt8s) Len() int           { return len(s) }
+func (s testInt8s) Less(i, j int) bool { return s[i] < s[j] }
+func (s testInt8s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+
+type testUint8s []uint8
+
+func (s testUint8s) Len() int           { return len(s) }
+func (s testUint8s) Less(i, j int) bool { return s[i] < s[j] }
+func (s testUint8s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 func TestPayload(t *testing.T) {
 	encoded := []byte{0x8, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2, 0x2}
@@ -17,6 +31,32 @@ func TestPayload(t *testing.T) {
 	ev, err := binary.Marshal(&v)
 	assert.NoError(t, err)
 	assert.Equal(t, encoded, ev)
+}
+
+func TestFixedWidthCodecs(t *testing.T) {
+	tests := []struct {
+		name  string
+		codec binary.Codec
+		value any
+	}{
+		{"int8", IntsCodecAs(reflect.TypeFor[testInt8s](), 1), testInt8s{2, -1, 1}},
+		{"uint8", UintsCodecAs(reflect.TypeFor[testUint8s](), 1), testUint8s{2, 0, 1}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			value := reflect.ValueOf(tc.value)
+			var first bytes.Buffer
+			assert.NoError(t, tc.codec.EncodeTo(binary.NewEncoder(&first), value))
+
+			var second bytes.Buffer
+			assert.NoError(t, tc.codec.EncodeTo(binary.NewEncoder(&second), value))
+			assert.Equal(t, first.Bytes(), second.Bytes())
+
+			out := reflect.New(value.Type()).Elem()
+			assert.NoError(t, tc.codec.DecodeTo(binary.NewDecoder(bytes.NewBuffer(first.Bytes())), out))
+			assert.Equal(t, value.Interface(), out.Interface())
+		})
+	}
 }
 
 func TestInvalidVarint(t *testing.T) {
@@ -30,6 +70,29 @@ func TestInvalidVarint(t *testing.T) {
 	}
 }
 
+func TestInvalidCompressedPayload(t *testing.T) {
+	overflow := append([]byte{1, 10}, bytes.Repeat([]byte{0x80}, 10)...)
+	valueOverflow := append([]byte{1, 11, 0}, bytes.Repeat([]byte{0x80}, 10)...)
+	tests := []struct {
+		name string
+		out  any
+		data []byte
+	}{
+		{"timestamp EOF", new(Timestamps), []byte{1, 0}},
+		{"timestamp overflow", new(Timestamps), overflow},
+		{"series timestamp EOF", new(TimeSeries), []byte{1, 0}},
+		{"series value EOF", new(TimeSeries), []byte{1, 1, 0}},
+		{"series value overflow", new(TimeSeries), valueOverflow},
+		{"counters timestamp EOF", new(TimeCounters), []byte{1, 0}},
+		{"counters value EOF", new(TimeCounters), []byte{1, 1, 0}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, errInvalidVarint, binary.Unmarshal(tc.data, tc.out))
+		})
+	}
+}
+
 func TestDecodeShort(t *testing.T) {
 	tests := map[string]any{
 		"timestamps":    new(Timestamps),
@@ -39,6 +102,7 @@ func TestDecodeShort(t *testing.T) {
 	data := map[string][]byte{
 		"missing count":   {},
 		"missing size":    {1},
+		"empty payload":   {1, 0},
 		"missing payload": {1, 1},
 	}
 

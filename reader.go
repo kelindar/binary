@@ -135,6 +135,38 @@ func (r *sliceReader) ReadUvarint() (uint64, error) {
 	return x, overflow
 }
 
+func readUvarints(r *sliceReader, values []uint64) error {
+	buffer := r.buffer
+	offset := r.offset
+	for i := range values {
+		var x uint64
+		for s := 0; s < maxVarintLen64; s += 7 {
+			if offset >= len(buffer) {
+				r.offset = offset
+				return io.EOF
+			}
+
+			b := buffer[offset]
+			offset++
+			if b < 0x80 {
+				if s == maxVarintLen64-7 && b > 1 {
+					r.offset = offset
+					return overflow
+				}
+				values[i] = x | uint64(b)<<s
+				goto next
+			}
+			x |= uint64(b&0x7f) << s
+		}
+
+		r.offset = offset
+		return overflow
+	next:
+	}
+	r.offset = offset
+	return nil
+}
+
 // ReadVarint reads an encoded signed integer from r and returns it as an int64.
 func (r *sliceReader) ReadVarint() (int64, error) {
 	ux, err := r.ReadUvarint() // ok to continue in presence of error
