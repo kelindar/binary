@@ -276,48 +276,63 @@ func (c *varintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if l, err = d.ReadUvarint(); err == nil {
 		n := int(l)
 		resizeSlice(rv, n)
-		base := rv.UnsafePointer()
-		switch c.elemSize {
-		case 1:
-			values := unsafe.Slice((*int8)(base), n)
-			for i := range values {
-				var v int64
-				if v, err = d.ReadVarint(); err != nil {
-					return
-				}
-				values[i] = int8(v)
-			}
-		case 2:
-			values := unsafe.Slice((*int16)(base), n)
-			for i := range values {
-				var v int64
-				if v, err = d.ReadVarint(); err != nil {
-					return
-				}
-				values[i] = int16(v)
-			}
-		case 4:
-			values := unsafe.Slice((*int32)(base), n)
-			for i := range values {
-				var v int64
-				if v, err = d.ReadVarint(); err != nil {
-					return
-				}
-				values[i] = int32(v)
-			}
-		case 8:
-			values := unsafe.Slice((*int64)(base), n)
-			for i := range values {
-				if values[i], err = d.ReadVarint(); err != nil {
-					return
-				}
-			}
-		}
+		err = decodeVarints(d, rv.UnsafePointer(), n, c.elemSize)
 	}
 	return
 }
 
 // ------------------------------------------------------------------------------
+
+func decodeVarints(d *Decoder, base unsafe.Pointer, n int, elemSize uintptr) (err error) {
+	if d.slice != nil {
+		switch elemSize {
+		case 1:
+			return readVarints(d.slice, unsafe.Slice((*int8)(base), n))
+		case 2:
+			return readVarints(d.slice, unsafe.Slice((*int16)(base), n))
+		case 4:
+			return readVarints(d.slice, unsafe.Slice((*int32)(base), n))
+		case 8:
+			return readVarints(d.slice, unsafe.Slice((*int64)(base), n))
+		}
+	}
+
+	var v int64
+	switch elemSize {
+	case 1:
+		values := unsafe.Slice((*int8)(base), n)
+		for i := range values {
+			if v, err = d.ReadVarint(); err != nil {
+				return
+			}
+			values[i] = int8(v)
+		}
+	case 2:
+		values := unsafe.Slice((*int16)(base), n)
+		for i := range values {
+			if v, err = d.ReadVarint(); err != nil {
+				return
+			}
+			values[i] = int16(v)
+		}
+	case 4:
+		values := unsafe.Slice((*int32)(base), n)
+		for i := range values {
+			if v, err = d.ReadVarint(); err != nil {
+				return
+			}
+			values[i] = int32(v)
+		}
+	case 8:
+		values := unsafe.Slice((*int64)(base), n)
+		for i := range values {
+			if values[i], err = d.ReadVarint(); err != nil {
+				return
+			}
+		}
+	}
+	return
+}
 
 type varuintSliceCodec struct {
 	elemSize uintptr
@@ -857,6 +872,23 @@ type stringBytesMapCodec struct{}
 
 func (stringBytesMapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	m := rv.Interface().(map[string][]byte)
+	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+		size := 10
+		for key, value := range m {
+			size += 2 + len(key) + 10 + len(value)
+		}
+		out.Grow(size)
+		buffer := out.AvailableBuffer()
+		buffer = binary.AppendUvarint(buffer, uint64(len(m)))
+		for key, value := range m {
+			buffer = append(buffer, byte(len(key)), byte(len(key)>>8))
+			buffer = append(buffer, key...)
+			buffer = binary.AppendUvarint(buffer, uint64(len(value)))
+			buffer = append(buffer, value...)
+		}
+		e.Write(buffer)
+		return
+	}
 	e.WriteUvarint(uint64(len(m)))
 	for key, value := range m {
 		e.WriteUint16(uint16(len(key)))
