@@ -24,6 +24,7 @@ func main() {
 	},
 		bench.WithSamples(100),
 		bench.WithDuration(10*time.Millisecond),
+		bench.WithReference("bench-v1.2.0.gob"),
 	)
 }
 
