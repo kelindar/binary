@@ -75,6 +75,18 @@ func scanPointer(t reflect.Type) (Codec, error) {
 }
 
 func scanArray(t reflect.Type) (Codec, error) {
+	switch t.Elem() {
+	case reflect.TypeFor[string]():
+		return &stringSliceCodec{array: true}, nil
+	case reflect.TypeFor[float32]():
+		return &floatSliceCodec{elemSize: t.Elem().Size(), array: true}, nil
+	case reflect.TypeFor[float64]():
+		return &floatSliceCodec{elemSize: t.Elem().Size(), array: true}, nil
+	case reflect.TypeFor[complex64]():
+		return &complexSliceCodec{elemSize: t.Elem().Size(), array: true}, nil
+	case reflect.TypeFor[complex128]():
+		return &complexSliceCodec{elemSize: t.Elem().Size(), array: true}, nil
+	}
 	elemCodec, err := scanType(t.Elem())
 	if err != nil {
 		return nil, err
@@ -83,17 +95,23 @@ func scanArray(t reflect.Type) (Codec, error) {
 }
 
 func scanSlice(t reflect.Type) (Codec, error) {
+	switch t.Elem() {
+	case reflect.TypeFor[string]():
+		return new(stringSliceCodec), nil
+	case reflect.TypeFor[float32]():
+		return &floatSliceCodec{elemSize: t.Elem().Size()}, nil
+	case reflect.TypeFor[float64]():
+		return &floatSliceCodec{elemSize: t.Elem().Size()}, nil
+	case reflect.TypeFor[complex64]():
+		return &complexSliceCodec{elemSize: t.Elem().Size()}, nil
+	case reflect.TypeFor[complex128]():
+		return &complexSliceCodec{elemSize: t.Elem().Size()}, nil
+	}
 	switch t.Elem().Kind() {
 	case reflect.Uint8:
 		return new(byteSliceCodec), nil
 	case reflect.Bool:
 		return new(boolSliceCodec), nil
-	case reflect.String:
-		return new(stringSliceCodec), nil
-	case reflect.Float32, reflect.Float64:
-		return &floatSliceCodec{elemSize: t.Elem().Size()}, nil
-	case reflect.Complex64, reflect.Complex128:
-		return &complexSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return &varuintSliceCodec{elemSize: t.Elem().Size()}, nil
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -252,6 +270,10 @@ func scanMap(t reflect.Type) (Codec, error) {
 		return new(stringBytesMapCodec), nil
 	case reflect.TypeFor[map[string]string]():
 		return new(stringStringMapCodec), nil
+	case reflect.TypeFor[map[uint64]uint64]():
+		return new(uint64MapCodec), nil
+	case reflect.TypeFor[map[string]uint64]():
+		return new(stringUint64MapCodec), nil
 	}
 
 	key, err := scanType(t.Key())

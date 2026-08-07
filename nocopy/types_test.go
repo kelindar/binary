@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+	"strconv"
 	"testing"
 
 	"github.com/kelindar/binary"
@@ -32,6 +33,28 @@ func TestJSON(t *testing.T) {
 	assert.NoError(t, binary.Unmarshal(encoded, &decoded))
 	encoded[len(encoded)-1] = '!'
 	assert.Equal(t, byte('!'), decoded[len(decoded)-1])
+}
+
+func TestLargeMapWire(t *testing.T) {
+	bytesMap := make(ByteMap, 8)
+	for i := range 8 {
+		bytesMap[strconv.Itoa(i)] = []byte(strconv.Itoa(i + 10))
+	}
+	var decodedBytes ByteMap
+	encoded, err := binary.Marshal(bytesMap)
+	assert.NoError(t, err)
+	assert.NoError(t, binary.Unmarshal(encoded, &decodedBytes))
+	assert.Equal(t, bytesMap, decodedBytes)
+
+	hashMap := make(HashMap, 8)
+	for i := range 8 {
+		hashMap[uint64(i)] = []byte(strconv.Itoa(i + 10))
+	}
+	var decodedHash HashMap
+	encoded, err = binary.Marshal(hashMap)
+	assert.NoError(t, err)
+	assert.NoError(t, binary.Unmarshal(encoded, &decodedHash))
+	assert.Equal(t, hashMap, decodedHash)
 }
 
 type composite map[string]column

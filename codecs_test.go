@@ -388,6 +388,31 @@ func TestFixedWidthSlices(t *testing.T) {
 	}
 }
 
+func TestFixedWidthArrays(t *testing.T) {
+	floatValues := [9]float64{0, 1.25, -2.5, 3, 4, 5, 6, 7, 8}
+	complexValues := [9]complex128{0, 1.25 - 2.5i, 3, 4, 5, 6, 7, 8}
+	stringValues := [9]string{"a", "b", "c", "d", "e", "f", "g", "h", "i"}
+	tests := []struct {
+		value   any
+		pointer any
+		out     any
+	}{
+		{floatValues, &floatValues, new([9]float64)},
+		{complexValues, &complexValues, new([9]complex128)},
+		{stringValues, &stringValues, new([9]string)},
+	}
+	for _, tc := range tests {
+		encoded, err := Marshal(tc.pointer)
+		assert.NoError(t, err)
+		assert.NoError(t, Unmarshal(encoded, tc.out))
+		assert.Equal(t, tc.value, reflect.ValueOf(tc.out).Elem().Interface())
+
+		valueEncoded, err := Marshal(tc.value)
+		assert.NoError(t, err)
+		assert.Equal(t, encoded, valueEncoded)
+	}
+}
+
 func TestMapDecode(t *testing.T) {
 	data := append([]byte{1, 0, 0}, bytes.Repeat([]byte{0xff}, 9)...)
 	data = append(data, 1)
@@ -409,6 +434,24 @@ func TestMapDecode(t *testing.T) {
 	strings = map[string]string{"stale": "value"}
 	assert.NoError(t, Unmarshal(encoded, &strings))
 	assert.Equal(t, map[string]string{"fresh": "value"}, strings)
+}
+
+func TestNumericMapWire(t *testing.T) {
+	u64s := make(map[uint64]uint64, 8)
+	strings := make(map[string]uint64, 8)
+	for i := range 8 {
+		u64s[uint64(i)] = uint64(i + 1)
+		strings[fmt.Sprintf("key-%d", i)] = uint64(i + 1)
+	}
+	tests := []any{u64s, strings}
+	for _, value := range tests {
+		encoded, err := Marshal(value)
+		assert.NoError(t, err)
+
+		got := reflect.New(reflect.TypeOf(value))
+		assert.NoError(t, Unmarshal(encoded, got.Interface()))
+		assert.Equal(t, value, got.Elem().Interface())
+	}
 }
 
 func TestCustomDecode(t *testing.T) {
