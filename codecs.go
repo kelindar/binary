@@ -46,7 +46,7 @@ func (c *reflectArrayCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *reflectArrayCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	l := rv.Type().Len()
 	for i := range l {
-		v := reflect.Indirect(rv.Index(i))
+		v := rv.Index(i)
 		if err = c.elemCodec.DecodeTo(d, v); err != nil {
 			return
 		}
@@ -68,6 +68,18 @@ func resizeSlice(rv reflect.Value, n int) {
 	rv.Set(reflect.MakeSlice(rv.Type(), n, n))
 }
 
+func sliceData(p unsafe.Pointer) unsafe.Pointer {
+	return *(*unsafe.Pointer)(p)
+}
+
+func sliceCap(p unsafe.Pointer) int {
+	return *(*int)(unsafe.Add(p, 2*unsafe.Sizeof(uintptr(0))))
+}
+
+func sliceLen(p unsafe.Pointer) int {
+	return *(*int)(unsafe.Add(p, unsafe.Sizeof(uintptr(0))))
+}
+
 // Encode encodes a value into the encoder.
 func (c *reflectSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
@@ -85,9 +97,10 @@ func (c *reflectSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *reflectSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	if l, err = d.ReadUvarint(); err == nil {
-		resizeSlice(rv, int(l))
-		for i := 0; i < int(l); i++ {
-			v := reflect.Indirect(rv.Index(i))
+		n := int(l)
+		resizeSlice(rv, n)
+		for i := range n {
+			v := rv.Index(i)
 			if err = c.elemCodec.DecodeTo(d, v); err != nil {
 				return
 			}
@@ -311,13 +324,15 @@ type varuintSliceCodec struct {
 
 // Encode encodes a value into the encoder.
 func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
-	l := rv.Len()
+	return encodeVaruints(e, rv.UnsafePointer(), rv.Len(), c.elemSize)
+}
+
+func encodeVaruints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) (err error) {
 	e.WriteUvarint(uint64(l))
 	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
 		out.Grow(2 * l)
 		buffer := out.AvailableBuffer()
-		base := rv.UnsafePointer()
-		switch c.elemSize {
+		switch elemSize {
 		case 2:
 			for _, v := range unsafe.Slice((*uint16)(base), l) {
 				buffer = binary.AppendUvarint(buffer, uint64(v))
@@ -334,8 +349,7 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 		e.Write(buffer)
 		return
 	}
-	base := rv.UnsafePointer()
-	switch c.elemSize {
+	switch elemSize {
 	case 2:
 		for _, v := range unsafe.Slice((*uint16)(base), l) {
 			e.WriteUvarint(uint64(v))
@@ -354,34 +368,50 @@ func (c *varuintSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 
 // Decode decodes into a reflect value from the decoder.
 func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	var l, v uint64
+	var l uint64
 	if l, err = d.ReadUvarint(); err == nil {
 		n := int(l)
 		resizeSlice(rv, n)
-		base := rv.UnsafePointer()
-		switch c.elemSize {
+		err = decodeVaruints(d, rv.UnsafePointer(), n, c.elemSize)
+	}
+	return
+}
+
+func decodeVaruints(d *Decoder, base unsafe.Pointer, n int, elemSize uintptr) (err error) {
+	if d.slice != nil {
+		switch elemSize {
 		case 2:
-			values := unsafe.Slice((*uint16)(base), n)
-			for i := range values {
-				if v, err = d.ReadUvarint(); err != nil {
-					return
-				}
-				values[i] = uint16(v)
-			}
+			return readUvarints(d.slice, unsafe.Slice((*uint16)(base), n))
 		case 4:
-			values := unsafe.Slice((*uint32)(base), n)
-			for i := range values {
-				if v, err = d.ReadUvarint(); err != nil {
-					return
-				}
-				values[i] = uint32(v)
-			}
+			return readUvarints(d.slice, unsafe.Slice((*uint32)(base), n))
 		case 8:
-			values := unsafe.Slice((*uint64)(base), n)
-			for i := range values {
-				if values[i], err = d.ReadUvarint(); err != nil {
-					return
-				}
+			return readUvarints(d.slice, unsafe.Slice((*uint64)(base), n))
+		}
+	}
+
+	var v uint64
+	switch elemSize {
+	case 2:
+		values := unsafe.Slice((*uint16)(base), n)
+		for i := range values {
+			if v, err = d.ReadUvarint(); err != nil {
+				return
+			}
+			values[i] = uint16(v)
+		}
+	case 4:
+		values := unsafe.Slice((*uint32)(base), n)
+		for i := range values {
+			if v, err = d.ReadUvarint(); err != nil {
+				return
+			}
+			values[i] = uint32(v)
+		}
+	case 8:
+		values := unsafe.Slice((*uint64)(base), n)
+		for i := range values {
+			if values[i], err = d.ReadUvarint(); err != nil {
+				return
 			}
 		}
 	}
@@ -438,6 +468,10 @@ const (
 	fieldDirect     = uint64(1) << 61
 	fieldIncluded   = uint64(1) << 62
 	fieldWritable   = uint64(1) << 63
+	fieldVaruint2   = reflect.Kind(27)
+	fieldVaruint4   = reflect.Kind(28)
+	fieldVaruint8   = reflect.Kind(29)
+	fieldByteSlice  = reflect.Kind(30)
 )
 
 type fieldCodec struct {
@@ -496,6 +530,21 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 				e.WriteFloat32(*(*float32)(pointer))
 			case reflect.Float64:
 				e.WriteFloat64(*(*float64)(pointer))
+			case fieldByteSlice:
+				b := *(*[]byte)(pointer)
+				e.WriteUvarint(uint64(len(b)))
+				e.Write(b)
+			case fieldVaruint2, fieldVaruint4, fieldVaruint8:
+				size := uintptr(8)
+				switch field.kind() {
+				case fieldVaruint2:
+					size = 2
+				case fieldVaruint4:
+					size = 4
+				}
+				if err = encodeVaruints(e, sliceData(pointer), sliceLen(pointer), size); err != nil {
+					return
+				}
 			default:
 				if err = field.Codec.EncodeTo(e, rv.Field(i)); err != nil {
 					return
@@ -640,6 +689,44 @@ func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 					return
 				}
 				*(*float64)(pointer) = value
+			case fieldByteSlice:
+				var length uint64
+				if length, err = d.ReadUvarint(); err != nil {
+					return
+				}
+				n := int(length)
+				if sliceCap(pointer) >= n {
+					*(*int)(unsafe.Add(pointer, unsafe.Sizeof(uintptr(0)))) = n
+				} else {
+					resizeSlice(rv.Field(i), n)
+				}
+				if n > 0 {
+					_, err = d.Read(unsafe.Slice((*byte)(sliceData(pointer)), n))
+					if err != nil {
+						return
+					}
+				}
+			case fieldVaruint2, fieldVaruint4, fieldVaruint8:
+				var length uint64
+				if length, err = d.ReadUvarint(); err != nil {
+					return
+				}
+				n := int(length)
+				if sliceCap(pointer) >= n {
+					*(*int)(unsafe.Add(pointer, unsafe.Sizeof(uintptr(0)))) = n
+				} else {
+					resizeSlice(rv.Field(i), n)
+				}
+				size := uintptr(8)
+				switch field.kind() {
+				case fieldVaruint2:
+					size = 2
+				case fieldVaruint4:
+					size = 4
+				}
+				if err = decodeVaruints(d, sliceData(pointer), n, size); err != nil {
+					return
+				}
 			default:
 				if err = field.Codec.DecodeTo(d, rv.Field(i)); err != nil {
 					return

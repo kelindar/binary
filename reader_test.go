@@ -46,6 +46,15 @@ func TestReaderOverflow(t *testing.T) {
 	}
 }
 
+func TestBulkUvarints(t *testing.T) {
+	var out []uint32
+	assert.NoError(t, Unmarshal([]byte{3, 1, 0x80, 1, 0xff, 1}, &out))
+	assert.Equal(t, []uint32{1, 128, 255}, out)
+
+	assert.Equal(t, io.EOF, Unmarshal([]byte{1, 0x80}, &out))
+	assert.Equal(t, overflow, Unmarshal(append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...), &out))
+}
+
 func TestStreamReader(t *testing.T) {
 	input := newBigStruct()
 	b, _ := Marshal(input)

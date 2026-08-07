@@ -198,6 +198,17 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			*complex64Codec, *complex128Codec, *float32Codec, *float64Codec:
 			kind = field.Type.Kind()
 			hasDirect = true
+		case *varuintSliceCodec:
+			switch codec.(*varuintSliceCodec).elemSize {
+			case 2:
+				kind = fieldVaruint2
+			case 4:
+				kind = fieldVaruint4
+			case 8:
+				kind = fieldVaruint8
+			}
+		case *byteSliceCodec:
+			kind = fieldByteSlice
 		}
 		packed := uint64(field.Offset) |
 			uint64(kind)<<fieldKindShift |

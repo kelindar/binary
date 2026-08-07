@@ -567,6 +567,19 @@ func testStructArray(t *testing.T) {
 	}
 }
 
+func TestArrayOfPointers(t *testing.T) {
+	type item struct {
+		Value uint64
+	}
+	want := [2]*item{{Value: 1}, nil}
+	data, err := Marshal(&want)
+	assert.NoError(t, err)
+
+	var got [2]*item
+	assert.NoError(t, Unmarshal(data, &got))
+	assert.Equal(t, want, got)
+}
+
 func testStructSlice(t *testing.T) {
 	type T1 struct {
 		ID    uint64
