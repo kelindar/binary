@@ -8,6 +8,7 @@ import (
 	"errors"
 	"reflect"
 	"sort"
+	"unsafe"
 
 	"github.com/kelindar/binary"
 )
@@ -27,19 +28,80 @@ type intSliceCodec struct {
 	sizeOfInt int
 }
 
+type signedInteger interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+type unsignedInteger interface {
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+func appendIntDeltas[T signedInteger](dst []byte, data []T) []byte {
+	prev := int64(0)
+	for _, curr := range data {
+		value := int64(curr)
+		dst = bin.AppendVarint(dst, value-prev)
+		prev = value
+	}
+	return dst
+}
+
+func appendUintDeltas[T unsignedInteger](dst []byte, data []T) []byte {
+	prev := uint64(0)
+	for _, curr := range data {
+		value := uint64(curr)
+		dst = bin.AppendUvarint(dst, value-prev)
+		prev = value
+	}
+	return dst
+}
+
+func decodeIntDeltas[T signedInteger](dst []T, data []byte) error {
+	prev := int64(0)
+	for i, j := 0, 0; i < len(data); j++ {
+		diff, n := bin.Varint(data[i:])
+		if n <= 0 {
+			return errInvalidVarint
+		}
+		prev += diff
+		dst[j] = T(prev)
+		i += n
+	}
+	return nil
+}
+
+func decodeUintDeltas[T unsignedInteger](dst []T, data []byte) error {
+	prev := uint64(0)
+	for i, j := 0, 0; i < len(data); j++ {
+		diff, n := bin.Uvarint(data[i:])
+		if n <= 0 {
+			return errInvalidVarint
+		}
+		prev += diff
+		dst[j] = T(prev)
+		i += n
+	}
+	return nil
+}
+
 // EncodeTo encodes a value into the encoder.
 func (c *intSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
-	sort.Sort(rv.Interface().(sort.Interface))
+	data := rv.Interface().(sort.Interface)
+	if !sort.IsSorted(data) {
+		sort.Sort(data)
+	}
 
-	prev := int64(0)
-	temp := make([]byte, 10)
 	bytes := make([]byte, 0, c.sizeOfInt*rv.Len())
-
-	for i := 0; i < rv.Len(); i++ {
-		curr := rv.Index(i).Int()
-		diff := curr - prev
-		bytes = append(bytes, temp[:bin.PutVarint(temp, diff)]...)
-		prev = curr
+	base := rv.UnsafePointer()
+	switch rv.Type().Elem().Size() {
+	case 1:
+		bytes = appendIntDeltas(bytes, unsafe.Slice((*int8)(base), rv.Len()))
+	case 2:
+		bytes = appendIntDeltas(bytes, unsafe.Slice((*int16)(base), rv.Len()))
+	case 4:
+		bytes = appendIntDeltas(bytes, unsafe.Slice((*int32)(base), rv.Len()))
+	case 8:
+		bytes = appendIntDeltas(bytes, unsafe.Slice((*int64)(base), rv.Len()))
 	}
 
 	e.WriteUvarint(uint64(len(bytes)))
@@ -66,16 +128,16 @@ func (c *intSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error
 				rv.SetLen(count)
 			}
 
-			// Iterate through and uncompress
-			prev := int64(0)
-			for i, j := 0, 0; i < len(b); j++ {
-				diff, n := bin.Varint(b[i:])
-				if n <= 0 {
-					return errInvalidVarint
-				}
-				prev = prev + diff
-				rv.Index(j).SetInt(prev)
-				i += n
+			base := rv.UnsafePointer()
+			switch rv.Type().Elem().Size() {
+			case 1:
+				err = decodeIntDeltas(unsafe.Slice((*int8)(base), count), b)
+			case 2:
+				err = decodeIntDeltas(unsafe.Slice((*int16)(base), count), b)
+			case 4:
+				err = decodeIntDeltas(unsafe.Slice((*int32)(base), count), b)
+			case 8:
+				err = decodeIntDeltas(unsafe.Slice((*int64)(base), count), b)
 			}
 		}
 	}
@@ -99,17 +161,22 @@ type uintSliceCodec struct {
 
 // EncodeTo encodes a value into the encoder.
 func (c *uintSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
-	sort.Sort(rv.Interface().(sort.Interface))
+	data := rv.Interface().(sort.Interface)
+	if !sort.IsSorted(data) {
+		sort.Sort(data)
+	}
 
-	prev := uint64(0)
-	temp := make([]byte, 10)
 	bytes := make([]byte, 0, c.sizeOfInt*rv.Len())
-
-	for i := 0; i < rv.Len(); i++ {
-		curr := rv.Index(i).Uint()
-		diff := curr - prev
-		bytes = append(bytes, temp[:bin.PutUvarint(temp, diff)]...)
-		prev = curr
+	base := rv.UnsafePointer()
+	switch rv.Type().Elem().Size() {
+	case 1:
+		bytes = appendUintDeltas(bytes, unsafe.Slice((*uint8)(base), rv.Len()))
+	case 2:
+		bytes = appendUintDeltas(bytes, unsafe.Slice((*uint16)(base), rv.Len()))
+	case 4:
+		bytes = appendUintDeltas(bytes, unsafe.Slice((*uint32)(base), rv.Len()))
+	case 8:
+		bytes = appendUintDeltas(bytes, unsafe.Slice((*uint64)(base), rv.Len()))
 	}
 
 	e.WriteUvarint(uint64(len(bytes)))
@@ -136,16 +203,16 @@ func (c *uintSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err erro
 				rv.SetLen(count)
 			}
 
-			// Iterate through and uncompress
-			prev := uint64(0)
-			for i, j := 0, 0; i < len(b); j++ {
-				diff, n := bin.Uvarint(b[i:])
-				if n <= 0 {
-					return errInvalidVarint
-				}
-				prev = prev + diff
-				rv.Index(j).SetUint(prev)
-				i += n
+			base := rv.UnsafePointer()
+			switch rv.Type().Elem().Size() {
+			case 1:
+				err = decodeUintDeltas(unsafe.Slice((*uint8)(base), count), b)
+			case 2:
+				err = decodeUintDeltas(unsafe.Slice((*uint16)(base), count), b)
+			case 4:
+				err = decodeUintDeltas(unsafe.Slice((*uint32)(base), count), b)
+			case 8:
+				err = decodeUintDeltas(unsafe.Slice((*uint64)(base), count), b)
 			}
 		}
 	}
@@ -172,14 +239,7 @@ func (c timestampCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error
 		sort.Sort(Uint64s(data))
 	}
 
-	temp := make([]byte, 10)
-	buffer := make([]byte, 0, 2*len(data)) // ~1-2 bytes per timestamp
-	prev := uint64(0)
-	for _, curr := range data {
-		diff := curr - prev
-		prev = curr
-		buffer = append(buffer, temp[:bin.PutUvarint(temp, uint64(diff))]...)
-	}
+	buffer := appendDelta(make([]byte, 0, 2*len(data)), []uint64(data)) // ~1-2 bytes per timestamp
 
 	// Writhe the size and the buffer
 	e.WriteUvarint(uint64(len(data)))
@@ -210,13 +270,9 @@ func (timestampCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 	}
 
 	// Read the timestamps
-	slice := make(Timestamps, 0, count)
-	prev := uint64(0)
-	for i := 0; i < int(size); {
-		diff, n := bin.Uvarint(buffer[i:])
-		prev = prev + diff
-		slice = append(slice, uint64(prev))
-		i += n
+	slice := make(Timestamps, count)
+	if _, err = readDelta([]uint64(slice), buffer); err != nil {
+		return err
 	}
 
 	rv.Set(reflect.ValueOf(slice))

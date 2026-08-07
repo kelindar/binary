@@ -50,6 +50,9 @@ func TestTypes(t *testing.T) {
 			b, err := binary.Marshal(tc.value)
 			assert.NoError(t, err)
 			assert.NotNil(t, b)
+			again, err := binary.Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.Equal(t, b, again)
 			for range 2 {
 				assert.NoError(t, binary.Unmarshal(b, tc.out))
 				assert.Equal(t, tc.value, deref(tc.out))

@@ -25,6 +25,20 @@ func TestTimeSeries(t *testing.T) {
 	assert.Equal(t, *ts, out)
 }
 
+func TestNestedTimeSeries(t *testing.T) {
+	type envelope struct {
+		Series TimeSeries
+		Value  uint64
+	}
+	want := envelope{Series: *makeTimeSeries(2), Value: 7}
+	b, err := binary.Marshal(want)
+	assert.NoError(t, err)
+
+	var got envelope
+	assert.NoError(t, binary.Unmarshal(b, &got))
+	assert.Equal(t, want, got)
+}
+
 func makeTimeSeries(count int) *TimeSeries {
 	var ts TimeSeries
 	for i := count - 1; i >= 0; i-- {

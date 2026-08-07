@@ -130,10 +130,11 @@ func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 	resizeSlice(rv, int(l))
 	for i := 0; i < int(l); i++ {
 		ptr := rv.Index(i)
-		if isNil, err = d.ReadBool(); err != nil {
+		isNil, err = d.ReadBool()
+		switch {
+		case err != nil:
 			return
-		}
-		if isNil {
+		case isNil:
 			ptr.SetZero()
 			continue
 		}
@@ -359,6 +360,9 @@ func (c *varuintSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		n := int(l)
 		resizeSlice(rv, n)
 		base := rv.UnsafePointer()
+		if c.elemSize == 8 && d.slice != nil {
+			return readUvarints(d.slice, unsafe.Slice((*uint64)(base), n))
+		}
 		switch c.elemSize {
 		case 2:
 			values := unsafe.Slice((*uint16)(base), n)

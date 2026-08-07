@@ -46,6 +46,19 @@ func TestReaderOverflow(t *testing.T) {
 	}
 }
 
+func TestBulkUvarintOverflow(t *testing.T) {
+	tests := map[string][]byte{
+		"too long":  append([]byte{1}, bytes.Repeat([]byte{0x80}, 10)...),
+		"too large": append([]byte{1}, append(bytes.Repeat([]byte{0x80}, 9), 2)...),
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			var out []uint64
+			assert.Equal(t, overflow, Unmarshal(data, &out))
+		})
+	}
+}
+
 func TestStreamReader(t *testing.T) {
 	input := newBigStruct()
 	b, _ := Marshal(input)
