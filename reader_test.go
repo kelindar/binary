@@ -32,6 +32,20 @@ func TestReaderEOF(t *testing.T) {
 	}
 }
 
+func TestReaderOverflow(t *testing.T) {
+	tests := map[string][]byte{
+		"too long":  bytes.Repeat([]byte{0x80}, 10),
+		"too large": append(bytes.Repeat([]byte{0x80}, 9), 2),
+	}
+
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			_, err := newSliceReader(data).ReadUvarint()
+			assert.Equal(t, overflow, err)
+		})
+	}
+}
+
 func TestStreamReader(t *testing.T) {
 	input := newBigStruct()
 	b, _ := Marshal(input)

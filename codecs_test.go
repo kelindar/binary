@@ -992,6 +992,11 @@ func TestSliceEncodeError(t *testing.T) {
 	var out2 []uint64
 	assert.NoError(t, Unmarshal(b2, &out2))
 	assert.Equal(t, v2, out2)
+
+	_, err = Marshal([1]failingBinary{{}})
+	assert.Error(t, err)
+	_, err = Marshal([]failingBinary{{}})
+	assert.Error(t, err)
 }
 
 func TestMapEncodeError(t *testing.T) {
