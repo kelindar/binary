@@ -587,10 +587,10 @@ func (c *reflectPointerCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
 }
 func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	isNil, err := d.ReadBool()
-	if err != nil {
+	switch {
+	case err != nil:
 		return err
-	}
-	if isNil {
+	case isNil:
 		rv.SetZero()
 		return nil
 	}
