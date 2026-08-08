@@ -230,14 +230,21 @@ func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 			clear(dict)
 		}
 		for i := 0; i < int(size); i++ {
-			k, _ := decodeString(d)
+			k, err := decodeString(d)
+			if err != nil {
+				return err
+			}
 			var l uint64
+			if l, err = d.ReadUvarint(); err != nil {
+				return err
+			}
 			var b []byte
-			if l, err = d.ReadUvarint(); err == nil && l > 0 {
-				if b, err = d.Slice(int(l)); err == nil {
-					dict[k] = b
+			if l > 0 {
+				if b, err = d.Slice(int(l)); err != nil {
+					return err
 				}
 			}
+			dict[k] = b
 		}
 	}
 	return
@@ -284,14 +291,21 @@ func (c *hashMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 			clear(dict)
 		}
 		for i := 0; i < int(size); i++ {
-			k, _ := d.ReadUint64()
+			k, err := d.ReadUint64()
+			if err != nil {
+				return err
+			}
 			var l uint32
 			var b []byte
-			if l, err = d.ReadUint32(); err == nil && l > 0 {
-				if b, err = d.Slice(int(l)); err == nil {
-					dict[k] = b
+			if l, err = d.ReadUint32(); err != nil {
+				return err
+			}
+			if l > 0 {
+				if b, err = d.Slice(int(l)); err != nil {
+					return err
 				}
 			}
+			dict[k] = b
 		}
 	}
 	return
@@ -319,8 +333,14 @@ func (c *dictionaryCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err err
 			clear(dict)
 		}
 		for i := 0; i < int(size); i++ {
-			k, _ := decodeString(d)
-			v, _ := decodeString(d)
+			k, err := decodeString(d)
+			if err != nil {
+				return err
+			}
+			v, err := decodeString(d)
+			if err != nil {
+				return err
+			}
 			dict[k] = v
 		}
 	}
