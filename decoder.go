@@ -4,6 +4,7 @@
 package binary
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -12,34 +13,28 @@ import (
 	"sync"
 )
 
-// Reusable long-lived decoder pool.
 var decoders = &sync.Pool{New: func() any {
 	return NewDecoder(newReader(nil))
 }}
 
-// Unmarshal decodes the payload from the binary format.
 func Unmarshal(b []byte, v any) (err error) {
-
-	// Get the decoder from the pool, reset it
 	d := decoders.Get().(*Decoder)
 	d.reader.(*sliceReader).Reset(b) // Reset the reader
-
-	// Decode and set the buffer if successful and free the decoder
 	err = d.Decode(v)
+	d.arena = nil
 	decoders.Put(d)
 	return
 }
 
-// Decoder represents a binary decoder.
 type Decoder struct {
 	reader  reader
 	slice   *sliceReader
+	arena   []byte
 	scratch [10]byte
 	last    reflect.Type
 	codec   Codec
 }
 
-// NewDecoder creates a binary decoder.
 func NewDecoder(r io.Reader) *Decoder {
 	reader := newReader(r)
 	d := &Decoder{reader: reader}
@@ -47,14 +42,12 @@ func NewDecoder(r io.Reader) *Decoder {
 	return d
 }
 
-// Decode decodes a value by reading from the underlying io.Reader.
 func (d *Decoder) Decode(v any) (err error) {
+	d.arena = nil
 	rv := reflect.Indirect(reflect.ValueOf(v))
 	if !rv.CanAddr() {
 		return errors.New("binary: can only decode to pointer type")
 	}
-
-	// Scan the type (this will load from cache)
 	t := rv.Type()
 	c := d.codec
 	if t != d.last {
@@ -65,11 +58,9 @@ func (d *Decoder) Decode(v any) (err error) {
 		d.codec = c
 	}
 	err = c.DecodeTo(d, rv)
-
 	return
 }
 
-// Read reads a set of bytes
 func (d *Decoder) Read(b []byte) (int, error) {
 	if d.slice != nil {
 		return d.slice.Read(b)
@@ -77,7 +68,6 @@ func (d *Decoder) Read(b []byte) (int, error) {
 	return d.reader.Read(b)
 }
 
-// ReadUvarint reads a variable-length Uint64 from the buffer.
 func (d *Decoder) ReadUvarint() (uint64, error) {
 	if d.slice != nil {
 		return d.slice.ReadUvarint()
@@ -85,7 +75,6 @@ func (d *Decoder) ReadUvarint() (uint64, error) {
 	return d.reader.ReadUvarint()
 }
 
-// ReadVarint reads a variable-length Int64 from the buffer.
 func (d *Decoder) ReadVarint() (int64, error) {
 	if d.slice != nil {
 		return d.slice.ReadVarint()
@@ -93,38 +82,30 @@ func (d *Decoder) ReadVarint() (int64, error) {
 	return d.reader.ReadVarint()
 }
 
-// ReadUint16 reads a uint16
 func (d *Decoder) ReadUint16() (out uint16, err error) {
 	var b []byte
 	if b, err = d.Slice(2); err == nil {
-		_ = b[1] // bounds check hint to compiler
-		out = (uint16(b[0]) | uint16(b[1])<<8)
+		out = binary.LittleEndian.Uint16(b)
 	}
 	return
 }
 
-// ReadUint32 reads a uint32
 func (d *Decoder) ReadUint32() (out uint32, err error) {
 	var b []byte
 	if b, err = d.Slice(4); err == nil {
-		_ = b[3] // bounds check hint to compiler
-		out = (uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24)
+		out = binary.LittleEndian.Uint32(b)
 	}
 	return
 }
 
-// ReadUint64 reads a uint64
 func (d *Decoder) ReadUint64() (out uint64, err error) {
 	var b []byte
 	if b, err = d.Slice(8); err == nil {
-		_ = b[7] // bounds check hint to compiler
-		out = (uint64(b[0]) | uint64(b[1])<<8 | uint64(b[2])<<16 | uint64(b[3])<<24 |
-			uint64(b[4])<<32 | uint64(b[5])<<40 | uint64(b[6])<<48 | uint64(b[7])<<56)
+		out = binary.LittleEndian.Uint64(b)
 	}
 	return
 }
 
-// ReadFloat32 reads a float32
 func (d *Decoder) ReadFloat32() (out float32, err error) {
 	var v uint32
 	if v, err = d.ReadUint32(); err == nil {
@@ -133,7 +114,6 @@ func (d *Decoder) ReadFloat32() (out float32, err error) {
 	return
 }
 
-// ReadFloat64 reads a float64
 func (d *Decoder) ReadFloat64() (out float64, err error) {
 	var v uint64
 	if v, err = d.ReadUint64(); err == nil {
@@ -142,7 +122,6 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 	return
 }
 
-// ReadBool reads a single boolean value from the slice.
 func (d *Decoder) ReadBool() (bool, error) {
 	if d.slice != nil {
 		b, err := d.slice.ReadByte()
@@ -152,31 +131,31 @@ func (d *Decoder) ReadBool() (bool, error) {
 	return b == 1, err
 }
 
-// ReadString a string prefixed with a variable-size integer size.
 func (d *Decoder) ReadString() (out string, err error) {
-	var b []byte
-	if b, err = d.ReadSlice(); err == nil {
-		out = string(b)
-	}
-	return
+	return d.readString("")
 }
 
-// ReadComplex reads a complex64
+func (d *Decoder) readString(old string) (string, error) {
+	b, err := d.ReadSlice()
+	if err != nil {
+		return "", err
+	}
+	if len(old) == len(b) && bytes.Equal(ToBytes(old), b) {
+		return old, nil
+	}
+	return string(b), nil
+}
+
 func (d *Decoder) readComplex64() (out complex64, err error) {
 	err = binary.Read(d.reader, binary.LittleEndian, &out)
 	return
 }
 
-// ReadComplex reads a complex128
 func (d *Decoder) readComplex128() (out complex128, err error) {
 	err = binary.Read(d.reader, binary.LittleEndian, &out)
 	return
 }
 
-// Slice selects a sub-slice of next bytes. This is similar to Read() but does not
-// actually perform a copy, but simply uses the underlying slice (if available) and
-// returns a sub-slice pointing to the same array. Since this requires access
-// to the underlying data, this is only available for a slice reader.
 func (d *Decoder) Slice(n int) ([]byte, error) {
 	if n < 0 {
 		return nil, io.ErrUnexpectedEOF
@@ -197,21 +176,31 @@ func (d *Decoder) readSlice(n uint64) ([]byte, error) {
 	return d.reader.Slice(int(n))
 }
 
-// ReadSlice reads a varint prefixed sub-slice without copying and returns the underlying
-// byte slice.
 func (d *Decoder) ReadSlice() (b []byte, err error) {
-	var l uint64
-	if l, err = d.ReadUvarint(); err == nil {
-		b, err = d.readSlice(l)
+	if d.slice != nil {
+		var l uint64
+		if l, err = d.slice.ReadUvarint(); err != nil {
+			return
+		}
+		if l > uint64(^uint(0)>>1) {
+			return nil, io.ErrUnexpectedEOF
+		}
+		return d.slice.Slice(int(l))
 	}
-	return
+	var l uint64
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	return d.readSlice(l)
 }
 
-// ReadTagged reads a length-prefixed tagged payload written by WriteTagged.
-// On the slice/buffer path, body aliases the decoder input and is valid only
-// until the next read on this Decoder; copy it to retain. On a stream path,
-// body is an owned copy.
 func (d *Decoder) ReadTagged() (tag uint64, body []byte, err error) {
+	if d.slice != nil {
+		if tag, err = d.slice.ReadUvarint(); err == nil {
+			body, err = d.ReadSlice()
+		}
+		return
+	}
 	if tag, err = d.ReadUvarint(); err != nil {
 		return
 	}
