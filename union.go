@@ -164,9 +164,13 @@ func (c *reflectUnionCodec) decodeArm(d *Decoder, codec Codec, body []byte, elem
 	if d.slice != nil {
 		r := d.slice
 		buffer, offset := r.buffer, r.offset
+		arena := d.arena
 		r.buffer, r.offset = body, 0
 		err := codec.DecodeTo(d, elem)
 		r.buffer, r.offset = buffer, offset
+		if arena == nil {
+			d.arena = nil
+		}
 		return err
 	}
 	dec := decoders.Get().(*Decoder)

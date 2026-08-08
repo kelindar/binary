@@ -921,7 +921,7 @@ func mapArena(d *Decoder) *[]byte {
 }
 
 func arenaBytes(arena *[]byte, src []byte) []byte {
-	dst := (*arena)[:len(src)]
+	dst := (*arena)[:len(src):len(src)]
 	copy(dst, src)
 	*arena = (*arena)[len(src):]
 	return dst
