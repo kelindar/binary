@@ -70,6 +70,28 @@ type s2 struct {
 	b []byte
 }
 
+type customPointer struct {
+	value string
+}
+
+type malformedBinary struct{}
+
+func (malformedBinary) MarshalBinary(int) ([]byte, error) { return nil, nil }
+func (*malformedBinary) UnmarshalBinary([]byte) error     { return nil }
+
+type malformedCodec struct{}
+
+func (*malformedCodec) GetBinaryCodec(int) Codec { return nil }
+
+func (v customPointer) MarshalBinary() ([]byte, error) {
+	return []byte(v.value), nil
+}
+
+func (v *customPointer) UnmarshalBinary(data []byte) error {
+	v.value = string(data)
+	return nil
+}
+
 func (s *s2) UnmarshalBinary(data []byte) error {
 	if len(data) != 1 {
 		return errors.New("expected data to be length 1")
@@ -547,6 +569,36 @@ func TestCustomDecode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NoError(t, Unmarshal(data, &got))
 	assert.Nil(t, got.Value)
+
+	t.Run("allocates pointer before unmarshaling", func(t *testing.T) {
+		type payload struct {
+			Value *customPointer
+		}
+		data, err := Marshal(payload{Value: &customPointer{value: "decoded"}})
+		assert.NoError(t, err)
+
+		var got payload
+		assert.NoError(t, Unmarshal(data, &got))
+		assert.Equal(t, "decoded", got.Value.value)
+	})
+}
+
+func TestCustomScan(t *testing.T) {
+	for name, value := range map[string]any{
+		"binary": malformedBinary{},
+		"codec":  malformedCodec{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("invalid custom method panicked during scan: %v", recovered)
+				}
+			}()
+			if _, err := Marshal(value); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func TestPointerEncodeError(t *testing.T) {

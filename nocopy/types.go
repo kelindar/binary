@@ -6,7 +6,9 @@ import (
 	"bytes"
 	bin "encoding/binary"
 	"encoding/json"
+	"errors"
 	"github.com/kelindar/binary"
+	"io"
 	"reflect"
 	"unsafe"
 )
@@ -105,6 +107,13 @@ type integerSliceCodec struct {
 	sizeOfInt int
 }
 
+func decodeLength(n uint64) (int, error) {
+	if n > uint64(^uint(0)>>1) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
+
 func integerCodec[T any](size int) binary.Codec {
 	return &integerSliceCodec{sizeOfInt: size}
 }
@@ -116,11 +125,23 @@ func (c *integerSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err e
 }
 func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var l uint64
+	if l, err = d.ReadUint64(); err != nil {
+		return
+	}
+	if l == 0 {
+		rv.SetZero()
+		return nil
+	}
+	n, err := decodeLength(l)
+	if err != nil {
+		return err
+	}
+	if n%c.sizeOfInt != 0 {
+		return io.ErrUnexpectedEOF
+	}
 	var b []byte
-	if l, err = d.ReadUint64(); err == nil && l > 0 {
-		if b, err = d.Slice(int(l)); err == nil {
-			setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), int(l)/c.sizeOfInt)
-		}
+	if b, err = d.Slice(n); err == nil {
+		setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), n/c.sizeOfInt)
 	}
 	return
 }
@@ -143,9 +164,14 @@ func (c *byteSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err erro
 }
 func (c *byteSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var b []byte
-	if b, err = d.ReadSlice(); err == nil && len(b) > 0 {
-		setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), len(b))
+	if b, err = d.ReadSlice(); err != nil {
+		return
 	}
+	if len(b) == 0 {
+		rv.SetZero()
+		return nil
+	}
+	setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), len(b))
 	return
 }
 
@@ -179,11 +205,20 @@ func (c *boolSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err erro
 func (c *boolSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var l uint64
 	var v []byte
-	if l, err = d.ReadUvarint(); err == nil && l > 0 {
-		if v, err = d.Slice(int(l)); err == nil {
-			b := binaryToBools(&v)
-			setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), len(b))
-		}
+	if l, err = d.ReadUvarint(); err != nil {
+		return
+	}
+	if l == 0 {
+		rv.SetZero()
+		return nil
+	}
+	n, err := decodeLength(l)
+	if err != nil {
+		return err
+	}
+	if v, err = d.Slice(n); err == nil {
+		b := binaryToBools(&v)
+		setSlice(rv, unsafe.Pointer(unsafe.SliceData(b)), len(b))
 	}
 	return
 }
@@ -192,8 +227,11 @@ type byteMapCodec struct{}
 
 func (c *byteMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	dict := rv.Interface().(ByteMap)
+	if len(dict) > 1<<16-1 {
+		return errMapTooLarge
+	}
 	if len(dict) >= 8 {
-		if out, ok := e.Buffer().(*bytes.Buffer); ok {
+		if out, ok := e.Buffer().(*bytes.Buffer); ok && out != nil {
 			size := 2
 			for key, value := range dict {
 				size += uvarintSize(uint64(len(key))) + len(key) + uvarintSize(uint64(len(value))) + len(value)
@@ -222,14 +260,19 @@ func (c *byteMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error)
 func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var size uint16
 	if size, err = d.ReadUint16(); err == nil {
+		n := int(size)
+		capacity, err := mapCapacity(d, n, 2)
+		if err != nil {
+			return err
+		}
 		dict := rv.Interface().(ByteMap)
 		if dict == nil {
-			dict = make(ByteMap, int(size))
+			dict = make(ByteMap, capacity)
 			rv.Set(reflect.ValueOf(dict))
 		} else {
 			clear(dict)
 		}
-		for i := 0; i < int(size); i++ {
+		for i := 0; i < n; i++ {
 			k, err := decodeString(d)
 			if err != nil {
 				return err
@@ -240,9 +283,14 @@ func (c *byteMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 			}
 			var b []byte
 			if l > 0 {
-				if b, err = d.Slice(int(l)); err != nil {
+				var n int
+				if n, err = decodeLength(l); err != nil {
 					return err
 				}
+				if b, err = d.Slice(n); err != nil {
+					return err
+				}
+				b = b[:len(b):len(b)]
 			}
 			dict[k] = b
 		}
@@ -254,8 +302,16 @@ type hashMapCodec struct{}
 
 func (c *hashMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	dict := rv.Interface().(HashMap)
+	if uint64(len(dict)) > uint64(^uint32(0)) {
+		return errMapTooLarge
+	}
+	for _, value := range dict {
+		if uint64(len(value)) > uint64(^uint32(0)) {
+			return errMapTooLarge
+		}
+	}
 	if len(dict) >= 8 {
-		if out, ok := e.Buffer().(*bytes.Buffer); ok {
+		if out, ok := e.Buffer().(*bytes.Buffer); ok && out != nil {
 			size := 4
 			for _, value := range dict {
 				size += 12 + len(value)
@@ -283,14 +339,22 @@ func (c *hashMapCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error)
 func (c *hashMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var size uint32
 	if size, err = d.ReadUint32(); err == nil {
+		n, err := decodeLength(uint64(size))
+		if err != nil {
+			return err
+		}
+		capacity, err := mapCapacity(d, n, 12)
+		if err != nil {
+			return err
+		}
 		dict := rv.Interface().(HashMap)
 		if dict == nil {
-			dict = make(HashMap, int(size))
+			dict = make(HashMap, capacity)
 			rv.Set(reflect.ValueOf(dict))
 		} else {
 			clear(dict)
 		}
-		for i := 0; i < int(size); i++ {
+		for i := 0; i < n; i++ {
 			k, err := d.ReadUint64()
 			if err != nil {
 				return err
@@ -301,9 +365,14 @@ func (c *hashMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 				return err
 			}
 			if l > 0 {
-				if b, err = d.Slice(int(l)); err != nil {
+				var n int
+				if n, err = decodeLength(uint64(l)); err != nil {
 					return err
 				}
+				if b, err = d.Slice(n); err != nil {
+					return err
+				}
+				b = b[:len(b):len(b)]
 			}
 			dict[k] = b
 		}
@@ -313,8 +382,23 @@ func (c *hashMapCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error)
 
 type dictionaryCodec struct{}
 
+var errMapTooLarge = errors.New("nocopy: map exceeds wire length")
+
+func mapCapacity(d *binary.Decoder, n, minBytes int) (int, error) {
+	if available := d.Available(); available >= 0 {
+		if n > available/minBytes {
+			return 0, io.EOF
+		}
+		return n, nil
+	}
+	return 0, nil
+}
+
 func (c *dictionaryCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	dict := rv.Interface().(Dictionary)
+	if len(dict) > 1<<16-1 {
+		return errMapTooLarge
+	}
 	e.WriteUint16(uint16(len(dict)))
 	for k, v := range dict {
 		e.WriteString(k)
@@ -325,9 +409,13 @@ func (c *dictionaryCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err err
 func (c *dictionaryCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var size uint16
 	if size, err = d.ReadUint16(); err == nil {
+		capacity, err := mapCapacity(d, int(size), 2)
+		if err != nil {
+			return err
+		}
 		dict := rv.Interface().(Dictionary)
 		if dict == nil {
-			dict = make(Dictionary, int(size))
+			dict = make(Dictionary, capacity)
 			rv.Set(reflect.ValueOf(dict))
 		} else {
 			clear(dict)

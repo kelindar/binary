@@ -166,14 +166,69 @@ func (d *Decoder) Slice(n int) ([]byte, error) {
 	return d.reader.Slice(n)
 }
 
-func (d *Decoder) readSlice(n uint64) ([]byte, error) {
+// Available reports the remaining bytes for an in-memory decoder, or -1 for a stream.
+func (d *Decoder) Available() int {
+	if d.slice == nil {
+		return -1
+	}
+	return d.slice.Len()
+}
+
+func decodeLength(n uint64) (int, error) {
 	if n > uint64(^uint(0)>>1) {
-		return nil, io.ErrUnexpectedEOF
+		return 0, io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
+
+func validateSliceLength(t reflect.Type, n int) error {
+	if n < 0 {
+		return io.ErrUnexpectedEOF
+	}
+	size := t.Elem().Size()
+	maxInt := uint64(^uint(0) >> 1)
+	if uint64(n) > maxInt/2 || (size != 0 && uint64(n) > maxInt/uint64(size)) {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+func (d *Decoder) ensureAvailable(n int) error {
+	if n < 0 {
+		return io.ErrUnexpectedEOF
+	}
+	if available := d.Available(); available >= 0 && n > available {
+		return io.EOF
+	}
+	return nil
+}
+
+func (d *Decoder) ensureElements(n, minBytes int) error {
+	if n < 0 || minBytes < 0 {
+		return io.ErrUnexpectedEOF
+	}
+	if available := d.Available(); available >= 0 && minBytes > 0 && n > available/minBytes {
+		return io.EOF
+	}
+	return nil
+}
+
+func (d *Decoder) mapCapacity(n int) int {
+	if d.Available() < 0 {
+		return 0
+	}
+	return n
+}
+
+func (d *Decoder) readSlice(n uint64) ([]byte, error) {
+	l, err := decodeLength(n)
+	if err != nil {
+		return nil, err
 	}
 	if d.slice != nil {
-		return d.slice.Slice(int(n))
+		return d.slice.Slice(l)
 	}
-	return d.reader.Slice(int(n))
+	return d.reader.Slice(l)
 }
 
 func (d *Decoder) ReadSlice() (b []byte, err error) {
@@ -182,10 +237,7 @@ func (d *Decoder) ReadSlice() (b []byte, err error) {
 		if l, err = d.slice.ReadUvarint(); err != nil {
 			return
 		}
-		if l > uint64(^uint(0)>>1) {
-			return nil, io.ErrUnexpectedEOF
-		}
-		return d.slice.Slice(int(l))
+		return d.readSlice(l)
 	}
 	var l uint64
 	if l, err = d.ReadUvarint(); err != nil {

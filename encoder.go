@@ -6,11 +6,14 @@ package binary
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
 	"reflect"
 	"sync"
 )
+
+var errNilWriter = errors.New("binary: nil writer")
 
 var encoders = &sync.Pool{New: func() any {
 	return new(Encoder)
@@ -74,12 +77,27 @@ type Encoder struct {
 }
 
 func NewEncoder(out io.Writer) *Encoder {
-	return &Encoder{out: out}
+	e := new(Encoder)
+	e.Reset(out)
+	return e
 }
 
 func (e *Encoder) Reset(out io.Writer) {
 	e.out = out
 	e.err = nil
+	if out == nil {
+		e.err = errNilWriter
+		return
+	}
+	if buffer, ok := out.(*bytes.Buffer); ok {
+		if buffer == nil {
+			e.err = errNilWriter
+		}
+		return
+	}
+	if isNilInterface(out) {
+		e.err = errNilWriter
+	}
 }
 
 func (e *Encoder) Buffer() io.Writer {
@@ -88,6 +106,9 @@ func (e *Encoder) Buffer() io.Writer {
 
 func (e *Encoder) Encode(v any) (err error) {
 	rv := reflect.Indirect(reflect.ValueOf(v))
+	if !rv.IsValid() {
+		return errors.New("binary: cannot encode nil value")
+	}
 	t := rv.Type()
 	c := e.codec
 	if t != e.last {
@@ -97,7 +118,7 @@ func (e *Encoder) Encode(v any) (err error) {
 		e.last = t
 		e.codec = c
 	}
-	if out, ok := e.out.(*bytes.Buffer); ok && (rv.Kind() == reflect.Array || rv.Kind() == reflect.Slice) {
+	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil && (rv.Kind() == reflect.Array || rv.Kind() == reflect.Slice) {
 		out.Grow(marshalCapacity(rv))
 	}
 	if err = c.EncodeTo(e, rv); err == nil {
@@ -176,10 +197,16 @@ func (e *Encoder) writeBool(v bool) {
 }
 
 func (e *Encoder) writeComplex64(v complex64) {
+	if e.err != nil {
+		return
+	}
 	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
 
 func (e *Encoder) writeComplex128(v complex128) {
+	if e.err != nil {
+		return
+	}
 	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
 

@@ -29,6 +29,9 @@ func scan(t reflect.Type) (c Codec, err error) {
 
 func scanType(t reflect.Type) (Codec, error) {
 	if custom, ok := scanCustomCodec(t); ok {
+		if custom == nil {
+			return nil, errors.New("binary: GetBinaryCodec returned nil for " + t.String())
+		}
 		return custom, nil
 	}
 	if custom, ok := scanBinaryMarshaler(t); ok {
@@ -62,55 +65,60 @@ func scanPointer(t reflect.Type) (Codec, error) {
 }
 
 func scanArray(t reflect.Type) (Codec, error) {
-	if codec := scanFixedWidth(t.Elem(), true); codec != nil {
+	if codec := scanFixedWidth(t.Elem(), true, t.Len()); codec != nil {
 		return codec, nil
 	}
 	elemCodec, err := scanType(t.Elem())
 	if err != nil {
 		return nil, err
 	}
-	return &reflectCollectionCodec{elemCodec: elemCodec, array: true}, nil
+	return &reflectCollectionCodec{elemCodec: elemCodec, array: true, length: t.Len()}, nil
 }
 
 func scanSlice(t reflect.Type) (Codec, error) {
-	if codec := scanFixedWidth(t.Elem(), false); codec != nil {
+	if codec := scanFixedWidth(t.Elem(), false, 0); codec != nil {
 		return codec, nil
+	}
+	elem, err := scanType(t.Elem())
+	if err != nil {
+		return nil, err
 	}
 	switch t.Elem().Kind() {
 	case reflect.Uint8:
-		return new(byteSliceCodec), nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return new(byteSliceCodec), nil
+		}
 	case reflect.Bool:
-		return new(boolSliceCodec), nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return new(boolSliceCodec), nil
+		}
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return &varSliceCodec{elemSize: t.Elem().Size()}, nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return &varSliceCodec{elemSize: t.Elem().Size()}, nil
+		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return &varSliceCodec{elemSize: t.Elem().Size(), signed: true}, nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return &varSliceCodec{elemSize: t.Elem().Size(), signed: true}, nil
+		}
 	case reflect.Ptr:
-		elemCodec, err := scanType(t.Elem().Elem())
-		if err != nil {
-			return nil, err
+		if pointer, ok := elem.(*reflectPointerCodec); ok {
+			return &reflectSliceOfPtrCodec{
+				elemType:  t.Elem().Elem(),
+				elemCodec: pointer.elemCodec,
+			}, nil
 		}
-		return &reflectSliceOfPtrCodec{
-			elemType:  t.Elem().Elem(),
-			elemCodec: elemCodec,
-		}, nil
-	default:
-		elemCodec, err := scanType(t.Elem())
-		if err != nil {
-			return nil, err
-		}
-		return &reflectCollectionCodec{elemCodec: elemCodec}, nil
 	}
+	return &reflectCollectionCodec{elemCodec: elem}, nil
 }
 
-func scanFixedWidth(elem reflect.Type, array bool) Codec {
+func scanFixedWidth(elem reflect.Type, array bool, length int) Codec {
 	switch elem {
 	case reflect.TypeFor[string]():
-		return &stringSliceCodec{array: array}
+		return &stringSliceCodec{array: array, length: length}
 	case reflect.TypeFor[float32](), reflect.TypeFor[float64]():
-		return &fixedSliceCodec{elemSize: elem.Size(), array: array}
+		return &fixedSliceCodec{elemSize: elem.Size(), array: array, length: length}
 	case reflect.TypeFor[complex64](), reflect.TypeFor[complex128]():
-		return &fixedSliceCodec{elemSize: elem.Size(), array: array, complex: true}
+		return &fixedSliceCodec{elemSize: elem.Size(), array: array, complex: true, length: length}
 	default:
 		return nil
 	}
@@ -129,7 +137,7 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		field := t.Field(i)
 		tag := field.Tag.Get("binary")
 		switch {
-		case field.Name == "_" || tag == "-":
+		case field.Name == "_" || field.PkgPath != "" || tag == "-":
 			continue
 		case tag == "":
 			hasPlain = true
@@ -185,7 +193,7 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 	for i := range n {
 		field := t.Field(i)
 		tag := field.Tag.Get("binary")
-		if field.Name == "_" || tag == "-" {
+		if field.Name == "_" || field.PkgPath != "" || tag == "-" {
 			continue
 		}
 		codec, err := scanType(field.Type)
@@ -278,8 +286,8 @@ func scanPrimitive(kind reflect.Kind) Codec {
 
 func scanBinaryMarshaler(t reflect.Type) (Codec, bool) {
 	out := new(customCodec)
-	out.marshaler, out.ptrMarshaler = findMethod(t, "MarshalBinary")
-	out.unmarshaler, out.ptrUnmarshaler = findMethod(t, "UnmarshalBinary")
+	out.marshaler, out.ptrMarshaler = findMethod(t, "MarshalBinary", isMarshalMethod)
+	out.unmarshaler, out.ptrUnmarshaler = findMethod(t, "UnmarshalBinary", isUnmarshalMethod)
 	if (out.marshaler != nil || out.ptrMarshaler != nil) &&
 		(out.unmarshaler != nil || out.ptrUnmarshaler != nil) {
 		return out, true
@@ -287,11 +295,11 @@ func scanBinaryMarshaler(t reflect.Type) (Codec, bool) {
 	return nil, false
 }
 
-func findMethod(t reflect.Type, name string) (value, pointer *reflect.Method) {
-	if method, ok := t.MethodByName(name); ok {
+func findMethod(t reflect.Type, name string, valid func(reflect.Type) bool) (value, pointer *reflect.Method) {
+	if method, ok := t.MethodByName(name); ok && valid(method.Type) {
 		return &method, nil
 	}
-	if method, ok := reflect.PtrTo(t).MethodByName(name); ok {
+	if method, ok := reflect.PtrTo(t).MethodByName(name); ok && valid(method.Type) {
 		return nil, &method
 	}
 	return nil, nil
@@ -299,12 +307,42 @@ func findMethod(t reflect.Type, name string) (value, pointer *reflect.Method) {
 
 func scanCustomCodec(t reflect.Type) (out Codec, ok bool) {
 	if m, ok := reflect.PtrTo(t).MethodByName("GetBinaryCodec"); ok {
+		if m.Type.NumIn() != 1 || m.Type.NumOut() != 1 || !m.Type.Out(0).Implements(reflect.TypeFor[Codec]()) {
+			return nil, false
+		}
 		callable := reflect.New(t).Method(m.Index)
 		result := callable.Call([]reflect.Value{})
-		if len(result) == 1 && !result[0].IsNil() {
-			out, ok = result[0].Interface().(Codec)
+		if len(result) == 1 {
+			value := result[0]
+			if isNilInterface(value.Interface()) {
+				return nil, true
+			}
+			out, ok = value.Interface().(Codec)
 			return out, ok
 		}
 	}
 	return
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
+func isMarshalMethod(t reflect.Type) bool {
+	return t.NumIn() == 1 && t.NumOut() == 2 &&
+		t.Out(0) == reflect.TypeFor[[]byte]() && t.Out(1) == reflect.TypeFor[error]()
+}
+
+func isUnmarshalMethod(t reflect.Type) bool {
+	return t.NumIn() == 2 && t.In(1) == reflect.TypeFor[[]byte]() &&
+		t.NumOut() == 1 && t.Out(0) == reflect.TypeFor[error]()
 }

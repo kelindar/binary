@@ -3,9 +3,11 @@
 package unsafe
 
 import (
-	"github.com/kelindar/binary"
+	"io"
 	"reflect"
 	"unsafe"
+
+	"github.com/kelindar/binary"
 )
 
 type Bools []bool
@@ -75,6 +77,13 @@ type integerSliceCodec struct {
 	sizeOfInt int
 }
 
+func decodeLength(n uint64) (int, error) {
+	if n > uint64(^uint(0)>>1) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
+
 func integerCodec[T any](size int) binary.Codec {
 	return &integerSliceCodec{sliceType: reflect.TypeFor[T](), sizeOfInt: size}
 }
@@ -86,12 +95,25 @@ func (c *integerSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err e
 }
 func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = d.ReadUint64(); err == nil && l > 0 {
-		src := reflect.MakeSlice(c.sliceType, int(l), int(l))
-		data := unsafe.Slice((*byte)(src.UnsafePointer()), int(l)*c.sizeOfInt)
-		if _, err = d.Read(data); err == nil {
-			rv.Set(src)
-		}
+	if l, err = d.ReadUint64(); err != nil {
+		return
 	}
+	if l == 0 {
+		rv.SetZero()
+		return nil
+	}
+	n, err := decodeLength(l)
+	if err != nil {
+		return err
+	}
+	if n > int(^uint(0)>>1)/c.sizeOfInt {
+		return io.ErrUnexpectedEOF
+	}
+	size := n * c.sizeOfInt
+	src := reflect.MakeSlice(c.sliceType, n, n)
+	if _, err = io.ReadFull(d, unsafe.Slice((*byte)(src.UnsafePointer()), size)); err != nil {
+		return err
+	}
+	rv.Set(src)
 	return
 }

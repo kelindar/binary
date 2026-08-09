@@ -6,6 +6,7 @@ package sorted
 import (
 	bin "encoding/binary"
 	"errors"
+	"io"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -14,6 +15,14 @@ import (
 )
 
 var errInvalidVarint = errors.New("sorted: invalid varint")
+var errMismatchedSeries = errors.New("sorted: time and data lengths differ")
+
+func decodeLength(n uint64) (int, error) {
+	if n > uint64(^uint(0)>>1) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
 
 func IntsCodecAs(sliceType reflect.Type, sizeOfInt int) binary.Codec {
 	return &deltaSliceCodec{sliceType: sliceType, sizeOfInt: sizeOfInt}
@@ -114,11 +123,15 @@ func (c *deltaSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err err
 	var l uint64
 	var b []byte
 	if l, err = d.ReadUvarint(); err == nil {
-		if l == 0 {
+		n, readErr := decodeLength(l)
+		if readErr != nil {
+			return readErr
+		}
+		if n == 0 {
 			rv.SetLen(0)
 			return nil
 		}
-		if b, err = d.Slice(int(l)); err == nil {
+		if b, err = d.Slice(n); err == nil {
 			count := countVarints(b)
 			if rv.Cap() < count {
 				rv.Set(reflect.MakeSlice(c.sliceType, count, count))
@@ -193,15 +206,25 @@ func (timestampCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 	if err != nil {
 		return err
 	}
+	n, err := decodeLength(count)
+	if err != nil {
+		return err
+	}
 	size, err := d.ReadUvarint()
 	if err != nil {
 		return err
 	}
-	buffer, err := d.Slice(int(size))
+	bufferSize, err := decodeLength(size)
 	if err != nil {
 		return err
 	}
-	n := int(count)
+	if n > bufferSize {
+		return errInvalidVarint
+	}
+	buffer, err := d.Slice(bufferSize)
+	if err != nil {
+		return err
+	}
 	slice := rv.Interface().(Timestamps)
 	if slice == nil || cap(slice) < n {
 		slice = make(Timestamps, n)

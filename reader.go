@@ -24,6 +24,9 @@ type reader interface {
 }
 
 func newReader(r io.Reader) reader {
+	if r != nil && isNilInterface(r) {
+		return newSliceReader(nil)
+	}
 	switch v := r.(type) {
 	case nil:
 		return newSliceReader(nil)
@@ -193,6 +196,17 @@ func newStreamReader(r io.Reader) *streamReader {
 }
 
 func (r *streamReader) Slice(n int) (buffer []byte, err error) {
+	if n < 0 || uint64(n) > uint64(^uint(0)>>1)/2 {
+		return nil, io.ErrUnexpectedEOF
+	}
+	if n > 64<<10 {
+		buffer := bytes.NewBuffer(make([]byte, 0, 64<<10))
+		_, err = buffer.ReadFrom(io.LimitReader(r, int64(n)))
+		if err == nil && buffer.Len() != n {
+			err = io.EOF
+		}
+		return buffer.Bytes(), err
+	}
 	buffer = make([]byte, n)
 	_, err = io.ReadFull(r, buffer)
 	return
