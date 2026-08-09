@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -1645,4 +1646,534 @@ func TestFloat(t *testing.T) {
 			assert.Equal(t, want, got)
 		})
 	}
+}
+
+func TestNamedPrimitives(t *testing.T) {
+	type namedFloat32 float32
+	type namedFloat64 float64
+	type namedComplex64 complex64
+	type namedComplex128 complex128
+
+	tests := []struct {
+		name  string
+		value any
+		out   any
+	}{
+		{"float32", namedFloat32(1.25), new(namedFloat32)},
+		{"float64", namedFloat64(1.25), new(namedFloat64)},
+		{"complex64", namedComplex64(1.25 - 2.5i), new(namedComplex64)},
+		{"complex128", namedComplex128(1.25 - 2.5i), new(namedComplex128)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded, err := Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.NoError(t, Unmarshal(encoded, tc.out))
+			assert.Equal(t, tc.value, reflect.ValueOf(tc.out).Elem().Interface())
+		})
+	}
+
+	assert.Error(t, NewDecoder(bytes.NewReader(nil)).Decode(new(complex64)))
+	assert.Error(t, NewDecoder(bytes.NewReader(nil)).Decode(new(complex128)))
+}
+
+type fuzzMessage struct {
+	Bool       bool
+	Int        int64
+	Uint       uint64
+	Float32    float32
+	Float64    float64
+	Complex64  complex64
+	Complex128 complex128
+	String     string
+	Bytes      []byte
+	Ints       []int64
+	Uints      []uint64
+	Strings    []string
+	Floats     []float64
+	Complexes  []complex128
+	Child      *fuzzChild
+	Children   []*fuzzChild
+	Array      [2]fuzzChild
+	Values     map[string][]byte
+	Counts     map[uint64]uint64
+	Generic    map[int32]string
+	Variant    fuzzVariant
+	Custom     fuzzCustom
+}
+
+type fuzzChild struct {
+	ID   int32
+	Name string
+	Data []byte
+}
+
+type fuzzText struct {
+	Msg string
+}
+
+type fuzzImage struct {
+	Width  int32
+	Height int32
+}
+
+type fuzzVariant struct {
+	Text  *fuzzText  `binary:"1,union"`
+	Image *fuzzImage `binary:"2,union"`
+}
+
+type fuzzCustom []byte
+
+func (v fuzzCustom) MarshalBinary() ([]byte, error) {
+	return append([]byte(nil), v...), nil
+}
+
+func (v *fuzzCustom) UnmarshalBinary(data []byte) error {
+	*v = append((*v)[:0], data...)
+	return nil
+}
+
+func FuzzDecodeWire(f *testing.F) {
+	f.Add([]byte(nil))
+	f.Add([]byte{0})
+	f.Add([]byte{1})
+	f.Add([]byte{0x80})
+	f.Add(bytes.Repeat([]byte{0x80}, 10))
+	f.Add(mustFuzzMarshal(fuzzMessage{}))
+	f.Add(mustFuzzMarshal(fuzzBoundaryMessage()))
+
+	image := fuzzBoundaryMessage()
+	image.Variant = fuzzVariant{Image: &fuzzImage{Width: 7, Height: -9}}
+	f.Add(mustFuzzMarshal(image))
+
+	f.Fuzz(func(t *testing.T, wire []byte) {
+		if len(wire) > 64<<10 {
+			return
+		}
+		var got fuzzMessage
+		if err := Unmarshal(wire, &got); err != nil {
+			return
+		}
+		if _, err := Marshal(&got); err != nil {
+			t.Fatal(err)
+		}
+		var streamed fuzzMessage
+		if err := NewDecoder(&fuzzOneByteReader{data: wire}).Decode(&streamed); err == nil {
+			if _, err := Marshal(&streamed); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+func FuzzDecodeUnion(f *testing.F) {
+	f.Add([]byte{0, 0})
+	f.Add([]byte{3, 0})
+	f.Add(mustFuzzMarshal(fuzzVariant{Text: &fuzzText{Msg: "text"}}))
+	f.Add(mustFuzzMarshal(fuzzVariant{Image: &fuzzImage{Width: 3, Height: 4}}))
+
+	f.Fuzz(func(t *testing.T, wire []byte) {
+		if len(wire) > 64<<10 {
+			return
+		}
+		var got fuzzVariant
+		if err := Unmarshal(wire, &got); err != nil {
+			return
+		}
+		if _, err := Marshal(&got); err != nil {
+			t.Fatal(err)
+		}
+		var streamed fuzzVariant
+		if err := NewDecoder(&fuzzOneByteReader{data: wire}).Decode(&streamed); err == nil {
+			if _, err := Marshal(&streamed); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+func FuzzRoundTrip(f *testing.F) {
+	for _, seed := range [][]byte{
+		nil,
+		{0},
+		{1},
+		{8},
+		bytes.Repeat([]byte{8}, 128),
+		bytes.Repeat([]byte{0xff}, 128),
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		input := fuzzMessageFrom(data)
+		for _, value := range []any{input, &input} {
+			wire, err := Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var got fuzzMessage
+			if err := Unmarshal(wire, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !equalFuzzMessage(input, got) {
+				t.Fatalf("slice round trip mismatch: %#v != %#v", input, got)
+			}
+
+			var streamed fuzzMessage
+			reader := &fuzzOneByteReader{data: wire}
+			if err := NewDecoder(reader).Decode(&streamed); err != nil {
+				t.Fatal(err)
+			}
+			if !equalFuzzMessage(input, streamed) {
+				t.Fatalf("stream round trip mismatch: %#v != %#v", input, streamed)
+			}
+
+			var buffer bytes.Buffer
+			if err := MarshalTo(value, &buffer); err != nil {
+				t.Fatal(err)
+			}
+			var fromWriter fuzzMessage
+			if err := Unmarshal(buffer.Bytes(), &fromWriter); err != nil {
+				t.Fatal(err)
+			}
+			if !equalFuzzMessage(input, fromWriter) {
+				t.Fatalf("writer round trip mismatch: %#v != %#v", input, fromWriter)
+			}
+		}
+	})
+}
+
+type fuzzCursor struct {
+	data []byte
+	off  int
+}
+
+func (c *fuzzCursor) next() byte {
+	if len(c.data) == 0 {
+		return 0
+	}
+	v := c.data[c.off%len(c.data)]
+	c.off++
+	return v
+}
+
+func (c *fuzzCursor) u64() uint64 {
+	var b [8]byte
+	for i := range b {
+		b[i] = c.next()
+	}
+	return stdbinary.LittleEndian.Uint64(b[:])
+}
+
+func (c *fuzzCursor) count(max int) int {
+	return int(c.next()) % (max + 1)
+}
+
+func (c *fuzzCursor) bytes(max int) []byte {
+	data := make([]byte, c.count(max))
+	for i := range data {
+		data[i] = c.next()
+	}
+	return data
+}
+
+func (c *fuzzCursor) child() fuzzChild {
+	return fuzzChild{ID: int32(c.u64()), Name: string(c.bytes(16)), Data: c.bytes(24)}
+}
+
+func fuzzMessageFrom(data []byte) fuzzMessage {
+	c := &fuzzCursor{data: data}
+	out := fuzzMessage{
+		Bool:       c.next()&1 != 0,
+		Int:        int64(c.u64()),
+		Uint:       c.u64(),
+		Float32:    math.Float32frombits(uint32(c.u64())),
+		Float64:    math.Float64frombits(c.u64()),
+		Complex64:  complex(math.Float32frombits(uint32(c.u64())), math.Float32frombits(uint32(c.u64()))),
+		Complex128: complex(math.Float64frombits(c.u64()), math.Float64frombits(c.u64())),
+		String:     string(c.bytes(32)),
+		Bytes:      c.bytes(32),
+	}
+
+	out.Ints = make([]int64, c.count(8))
+	for i := range out.Ints {
+		out.Ints[i] = int64(c.u64())
+	}
+	out.Uints = make([]uint64, c.count(8))
+	for i := range out.Uints {
+		out.Uints[i] = c.u64()
+	}
+	out.Strings = make([]string, c.count(8))
+	for i := range out.Strings {
+		out.Strings[i] = string(c.bytes(16))
+	}
+	out.Floats = make([]float64, c.count(8))
+	for i := range out.Floats {
+		out.Floats[i] = math.Float64frombits(c.u64())
+	}
+	out.Complexes = make([]complex128, c.count(8))
+	for i := range out.Complexes {
+		out.Complexes[i] = complex(math.Float64frombits(c.u64()), math.Float64frombits(c.u64()))
+	}
+
+	if c.next()&1 != 0 {
+		out.Child = new(fuzzChild)
+		*out.Child = c.child()
+	}
+	out.Children = make([]*fuzzChild, c.count(8))
+	for i := range out.Children {
+		if c.next()&1 != 0 {
+			out.Children[i] = new(fuzzChild)
+			*out.Children[i] = c.child()
+		}
+	}
+	for i := range out.Array {
+		out.Array[i] = c.child()
+	}
+
+	valueCount := c.count(8)
+	out.Values = make(map[string][]byte, valueCount)
+	for i := 0; i < valueCount; i++ {
+		out.Values[string(c.bytes(16))] = c.bytes(24)
+	}
+	countCount := c.count(8)
+	out.Counts = make(map[uint64]uint64, countCount)
+	for i := 0; i < countCount; i++ {
+		out.Counts[c.u64()] = c.u64()
+	}
+	genericCount := c.count(8)
+	out.Generic = make(map[int32]string, genericCount)
+	for i := 0; i < genericCount; i++ {
+		out.Generic[int32(c.u64())] = string(c.bytes(16))
+	}
+
+	switch c.next() % 3 {
+	case 1:
+		out.Variant.Text = &fuzzText{Msg: string(c.bytes(24))}
+	case 2:
+		out.Variant.Image = &fuzzImage{Width: int32(c.u64()), Height: int32(c.u64())}
+	}
+	out.Custom = fuzzCustom(c.bytes(32))
+	return out
+}
+
+func fuzzBoundaryMessage() fuzzMessage {
+	values := make(map[string][]byte, 8)
+	counts := make(map[uint64]uint64, 8)
+	generic := make(map[int32]string, 8)
+	for i := 0; i < 8; i++ {
+		key := string(rune('a' + i))
+		values[key] = []byte{byte(i), 127, 128, 255}
+		counts[uint64(i)] = ^uint64(i)
+		generic[int32(i)] = key
+	}
+	return fuzzMessage{
+		Int:        -1 << 63,
+		Uint:       ^uint64(0),
+		Float32:    math.Float32frombits(0x7fc00001),
+		Float64:    math.Float64frombits(0x7ff8000000000001),
+		Complex64:  complex(float32(math.Copysign(0, -1)), float32(math.Inf(1))),
+		Complex128: complex(math.NaN(), math.Inf(-1)),
+		String:     string([]byte{0, 127, 128, 255}),
+		Bytes:      []byte{0, 127, 128, 255},
+		Ints:       []int64{-1 << 63, -1, 0, 1, 1<<63 - 1},
+		Uints:      []uint64{0, 1, 127, 128, ^uint64(0)},
+		Strings:    []string{"", "a", string(bytes.Repeat([]byte{'x'}, 128)), "z", "y", "w", "v", "u"},
+		Floats:     []float64{0, math.Copysign(0, -1), math.Inf(1), math.Inf(-1), math.NaN(), 1, -1, 2},
+		Complexes:  []complex128{0, complex(math.NaN(), math.Inf(1))},
+		Child:      &fuzzChild{ID: -1, Name: "child", Data: []byte{1, 2, 3}},
+		Children:   []*fuzzChild{nil, {ID: 7, Name: "two"}},
+		Array:      [2]fuzzChild{{ID: 1, Name: "one"}, {ID: 2, Name: "two"}},
+		Values:     values,
+		Counts:     counts,
+		Generic:    generic,
+		Variant:    fuzzVariant{Text: &fuzzText{Msg: "text"}},
+		Custom:     fuzzCustom{0, 1, 127, 128, 255},
+	}
+}
+
+type fuzzOneByteReader struct {
+	data []byte
+	off  int
+}
+
+func (r *fuzzOneByteReader) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if r.off == len(r.data) {
+		return 0, io.EOF
+	}
+	p[0] = r.data[r.off]
+	r.off++
+	return 1, nil
+}
+
+func equalFuzzMessage(a, b fuzzMessage) bool {
+	if a.Bool != b.Bool || a.Int != b.Int || a.Uint != b.Uint ||
+		math.Float32bits(a.Float32) != math.Float32bits(b.Float32) ||
+		math.Float64bits(a.Float64) != math.Float64bits(b.Float64) ||
+		!equalFuzzComplex64(a.Complex64, b.Complex64) ||
+		!equalFuzzComplex128(a.Complex128, b.Complex128) ||
+		a.String != b.String || !bytes.Equal(a.Bytes, b.Bytes) ||
+		!equalFuzzInt64s(a.Ints, b.Ints) || !equalFuzzUint64s(a.Uints, b.Uints) ||
+		!equalFuzzStrings(a.Strings, b.Strings) || !equalFuzzFloats(a.Floats, b.Floats) ||
+		!equalFuzzComplexes(a.Complexes, b.Complexes) || !equalFuzzChildPtr(a.Child, b.Child) ||
+		!equalFuzzChildren(a.Children, b.Children) || !equalFuzzMapBytes(a.Values, b.Values) ||
+		!equalFuzzMapUint64(a.Counts, b.Counts) || !equalFuzzMapString(a.Generic, b.Generic) ||
+		!equalFuzzVariant(a.Variant, b.Variant) || !bytes.Equal(a.Custom, b.Custom) {
+		return false
+	}
+	for i := range a.Array {
+		if !equalFuzzChild(a.Array[i], b.Array[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzChild(a, b fuzzChild) bool {
+	return a.ID == b.ID && a.Name == b.Name && bytes.Equal(a.Data, b.Data)
+}
+
+func equalFuzzChildPtr(a, b *fuzzChild) bool {
+	return (a == nil) == (b == nil) && (a == nil || equalFuzzChild(*a, *b))
+}
+
+func equalFuzzChildren(a, b []*fuzzChild) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !equalFuzzChildPtr(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzInt64s(a, b []int64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzUint64s(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzFloats(a, b []float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if math.Float64bits(a[i]) != math.Float64bits(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzComplex64(a, b complex64) bool {
+	return math.Float32bits(real(a)) == math.Float32bits(real(b)) &&
+		math.Float32bits(imag(a)) == math.Float32bits(imag(b))
+}
+
+func equalFuzzComplex128(a, b complex128) bool {
+	return math.Float64bits(real(a)) == math.Float64bits(real(b)) &&
+		math.Float64bits(imag(a)) == math.Float64bits(imag(b))
+}
+
+func equalFuzzComplexes(a, b []complex128) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !equalFuzzComplex128(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzMapBytes(a, b map[string][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		other, ok := b[key]
+		if !ok || !bytes.Equal(value, other) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzMapUint64(a, b map[uint64]uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzMapString(a, b map[int32]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func equalFuzzVariant(a, b fuzzVariant) bool {
+	if (a.Text == nil) != (b.Text == nil) || (a.Image == nil) != (b.Image == nil) {
+		return false
+	}
+	if a.Text != nil && a.Text.Msg != b.Text.Msg {
+		return false
+	}
+	return a.Image == nil || (a.Image.Width == b.Image.Width && a.Image.Height == b.Image.Height)
+}
+
+func mustFuzzMarshal(value any) []byte {
+	data, err := Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
 }
