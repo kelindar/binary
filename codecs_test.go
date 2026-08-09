@@ -1648,6 +1648,35 @@ func TestFloat(t *testing.T) {
 	}
 }
 
+func TestNamedPrimitives(t *testing.T) {
+	type namedFloat32 float32
+	type namedFloat64 float64
+	type namedComplex64 complex64
+	type namedComplex128 complex128
+
+	tests := []struct {
+		name  string
+		value any
+		out   any
+	}{
+		{"float32", namedFloat32(1.25), new(namedFloat32)},
+		{"float64", namedFloat64(1.25), new(namedFloat64)},
+		{"complex64", namedComplex64(1.25 - 2.5i), new(namedComplex64)},
+		{"complex128", namedComplex128(1.25 - 2.5i), new(namedComplex128)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded, err := Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.NoError(t, Unmarshal(encoded, tc.out))
+			assert.Equal(t, tc.value, reflect.ValueOf(tc.out).Elem().Interface())
+		})
+	}
+
+	assert.Error(t, NewDecoder(bytes.NewReader(nil)).Decode(new(complex64)))
+	assert.Error(t, NewDecoder(bytes.NewReader(nil)).Decode(new(complex128)))
+}
+
 type fuzzMessage struct {
 	Bool       bool
 	Int        int64
