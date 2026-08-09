@@ -147,13 +147,19 @@ func (d *Decoder) readString(old string) (string, error) {
 }
 
 func (d *Decoder) readComplex64() (out complex64, err error) {
-	err = binary.Read(d.reader, binary.LittleEndian, &out)
-	return
+	b, err := d.Slice(8)
+	if err != nil {
+		return 0, err
+	}
+	return complex(math.Float32frombits(binary.LittleEndian.Uint32(b)), math.Float32frombits(binary.LittleEndian.Uint32(b[4:]))), nil
 }
 
 func (d *Decoder) readComplex128() (out complex128, err error) {
-	err = binary.Read(d.reader, binary.LittleEndian, &out)
-	return
+	b, err := d.Slice(16)
+	if err != nil {
+		return 0, err
+	}
+	return complex(math.Float64frombits(binary.LittleEndian.Uint64(b)), math.Float64frombits(binary.LittleEndian.Uint64(b[8:]))), nil
 }
 
 func (d *Decoder) Slice(n int) ([]byte, error) {

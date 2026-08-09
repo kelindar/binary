@@ -458,16 +458,15 @@ func (c *fixedSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	}
 	for i := range l {
 		if c.complex {
-			value := rv.Index(i).Complex()
 			if c.elemSize == 8 {
-				e.writeComplex64(complex64(value))
+				e.writeComplex64(rv.Index(i).Interface().(complex64))
 			} else {
-				e.writeComplex128(value)
+				e.writeComplex128(rv.Index(i).Interface().(complex128))
 			}
 		} else if c.elemSize == 4 {
-			e.WriteFloat32(float32(rv.Index(i).Float()))
+			e.WriteFloat32(rv.Index(i).Interface().(float32))
 		} else {
-			e.WriteFloat64(rv.Index(i).Float())
+			e.WriteFloat64(rv.Index(i).Interface().(float64))
 		}
 	}
 	return
@@ -1648,13 +1647,29 @@ func (*primitiveCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		e.WriteUvarint(rv.Uint())
 	case reflect.Complex64:
-		e.writeComplex64(complex64(rv.Complex()))
+		if rv.Type() == reflect.TypeFor[complex64]() {
+			e.writeComplex64(rv.Interface().(complex64))
+		} else {
+			e.writeComplex64(complex64(rv.Complex()))
+		}
 	case reflect.Complex128:
-		e.writeComplex128(rv.Complex())
+		if rv.Type() == reflect.TypeFor[complex128]() {
+			e.writeComplex128(rv.Interface().(complex128))
+		} else {
+			e.writeComplex128(rv.Complex())
+		}
 	case reflect.Float32:
-		e.WriteFloat32(float32(rv.Float()))
+		if rv.Type() == reflect.TypeFor[float32]() {
+			e.WriteFloat32(rv.Interface().(float32))
+		} else {
+			e.WriteFloat32(float32(rv.Float()))
+		}
 	case reflect.Float64:
-		e.WriteFloat64(rv.Float())
+		if rv.Type() == reflect.TypeFor[float64]() {
+			e.WriteFloat64(rv.Interface().(float64))
+		} else {
+			e.WriteFloat64(rv.Float())
+		}
 	}
 	return nil
 }
@@ -1684,20 +1699,40 @@ func (*primitiveCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	case reflect.Complex64:
 		var value complex64
 		value, err = d.readComplex64()
-		rv.SetComplex(complex128(value))
+		if err == nil {
+			if rv.Type() == reflect.TypeFor[complex64]() {
+				rv.Set(reflect.ValueOf(value))
+			} else {
+				rv.SetComplex(complex128(value))
+			}
+		}
 	case reflect.Complex128:
 		var value complex128
 		value, err = d.readComplex128()
-		rv.SetComplex(value)
+		if err == nil {
+			if rv.Type() == reflect.TypeFor[complex128]() {
+				rv.Set(reflect.ValueOf(value))
+			} else {
+				rv.SetComplex(value)
+			}
+		}
 	case reflect.Float32:
 		var value float32
 		if value, err = d.ReadFloat32(); err == nil {
-			rv.SetFloat(float64(value))
+			if rv.Type() == reflect.TypeFor[float32]() {
+				rv.Set(reflect.ValueOf(value))
+			} else {
+				rv.SetFloat(float64(value))
+			}
 		}
 	case reflect.Float64:
 		var value float64
 		if value, err = d.ReadFloat64(); err == nil {
-			rv.SetFloat(value)
+			if rv.Type() == reflect.TypeFor[float64]() {
+				rv.Set(reflect.ValueOf(value))
+			} else {
+				rv.SetFloat(value)
+			}
 		}
 	}
 	return

@@ -323,3 +323,94 @@ func deref(v any) any {
 		return v
 	}
 }
+
+func FuzzDecodeWire(f *testing.F) {
+	seeds := []struct {
+		kind  byte
+		value any
+	}{
+		{0, Bools{true, false, true}},
+		{1, Uint16s{0, 1, 65535}},
+		{2, Int16s{-1, 0, 1}},
+		{3, Uint32s{0, 1, ^uint32(0)}},
+		{4, Int32s{-1, 0, 1}},
+		{5, Uint64s{0, 1, ^uint64(0)}},
+		{6, Int64s{-1, 0, 1}},
+		{7, Float32s{0, 1}},
+		{8, Float64s{0, 1}},
+		{9, String("hello")},
+		{10, Bytes("payload")},
+		{11, JSON(`{\"ok\":true}`)},
+		{12, Dictionary{"a": "b", "c": "d"}},
+		{13, ByteMap{"a": []byte("b")}},
+		{14, HashMap{1: []byte("one")}},
+	}
+	for _, seed := range seeds {
+		f.Add(seed.kind, mustFuzzMarshal(seed.value))
+	}
+	f.Add(byte(0), []byte(nil))
+	f.Add(byte(13), []byte{0, 0, 0, 0})
+
+	f.Fuzz(func(t *testing.T, kind byte, wire []byte) {
+		if len(wire) > 64<<10 {
+			return
+		}
+
+		out := fuzzOutput(kind)
+		if err := binary.Unmarshal(wire, out); err == nil {
+			if _, err := binary.Marshal(out); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		streamOut := fuzzOutput(kind)
+		if err := binary.NewDecoder(bytes.NewReader(wire)).Decode(streamOut); err == nil {
+			if _, err := binary.Marshal(streamOut); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+func fuzzOutput(kind byte) any {
+	switch kind % 15 {
+	case 0:
+		return new(Bools)
+	case 1:
+		return new(Uint16s)
+	case 2:
+		return new(Int16s)
+	case 3:
+		return new(Uint32s)
+	case 4:
+		return new(Int32s)
+	case 5:
+		return new(Uint64s)
+	case 6:
+		return new(Int64s)
+	case 7:
+		return new(Float32s)
+	case 8:
+		return new(Float64s)
+	case 9:
+		return new(String)
+	case 10:
+		return new(Bytes)
+	case 11:
+		return new(JSON)
+	case 12:
+		return new(Dictionary)
+	case 13:
+		return new(ByteMap)
+	default:
+		return new(HashMap)
+	}
+}
+
+func mustFuzzMarshal(value any) []byte {
+	data, err := binary.Marshal(value)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}

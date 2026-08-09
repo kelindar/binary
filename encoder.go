@@ -197,17 +197,17 @@ func (e *Encoder) writeBool(v bool) {
 }
 
 func (e *Encoder) writeComplex64(v complex64) {
-	if e.err != nil {
-		return
-	}
-	e.err = binary.Write(e.out, binary.LittleEndian, v)
+	var b [8]byte
+	binary.LittleEndian.PutUint32(b[:4], math.Float32bits(real(v)))
+	binary.LittleEndian.PutUint32(b[4:], math.Float32bits(imag(v)))
+	e.Write(b[:])
 }
 
 func (e *Encoder) writeComplex128(v complex128) {
-	if e.err != nil {
-		return
-	}
-	e.err = binary.Write(e.out, binary.LittleEndian, v)
+	var b [16]byte
+	binary.LittleEndian.PutUint64(b[:8], math.Float64bits(real(v)))
+	binary.LittleEndian.PutUint64(b[8:], math.Float64bits(imag(v)))
+	e.Write(b[:])
 }
 
 func (e *Encoder) WriteString(v string) {
