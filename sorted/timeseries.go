@@ -13,6 +13,8 @@ import (
 	"github.com/kelindar/binary"
 )
 
+// ------------------------------------------------------------------------------
+
 type tszCodec struct{}
 
 func (tszCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
@@ -91,6 +93,8 @@ func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
 	rv.Set(reflect.ValueOf(result))
 	return nil
 }
+
+// ------------------------------------------------------------------------------
 
 func appendDelta(dst []byte, data []uint64) []byte {
 	prev := uint64(0)

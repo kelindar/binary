@@ -10,11 +10,15 @@ import (
 	"github.com/kelindar/binary"
 )
 
+// ------------------------------------------------------------------------------
+
 type Bools []bool
 
 func (s *Bools) GetBinaryCodec() binary.Codec {
 	return &integerSliceCodec{sliceType: reflect.TypeFor[Bools](), sizeOfInt: 1}
 }
+
+// ------------------------------------------------------------------------------
 
 type Uint16s []uint16
 
@@ -23,12 +27,16 @@ func (s Uint16s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint16s) GetBinaryCodec() binary.Codec { return integerCodec[Uint16s](2) }
 
+// ------------------------------------------------------------------------------
+
 type Int16s []int16
 
 func (s Int16s) Len() int                      { return len(s) }
 func (s Int16s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int16s) GetBinaryCodec() binary.Codec { return integerCodec[Int16s](2) }
+
+// ------------------------------------------------------------------------------
 
 type Uint32s []uint32
 
@@ -37,12 +45,16 @@ func (s Uint32s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint32s) GetBinaryCodec() binary.Codec { return integerCodec[Uint32s](4) }
 
+// ------------------------------------------------------------------------------
+
 type Int32s []int32
 
 func (s Int32s) Len() int                      { return len(s) }
 func (s Int32s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int32s) GetBinaryCodec() binary.Codec { return integerCodec[Int32s](4) }
+
+// ------------------------------------------------------------------------------
 
 type Uint64s []uint64
 
@@ -51,12 +63,16 @@ func (s Uint64s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint64s) GetBinaryCodec() binary.Codec { return integerCodec[Uint64s](8) }
 
+// ------------------------------------------------------------------------------
+
 type Int64s []int64
 
 func (s Int64s) Len() int                      { return len(s) }
 func (s Int64s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int64s) GetBinaryCodec() binary.Codec { return integerCodec[Int64s](8) }
+
+// ------------------------------------------------------------------------------
 
 type Float32s []float32
 
@@ -65,12 +81,16 @@ func (s Float32s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Float32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Float32s) GetBinaryCodec() binary.Codec { return integerCodec[Float32s](4) }
 
+// ------------------------------------------------------------------------------
+
 type Float64s []float64
 
 func (s Float64s) Len() int                      { return len(s) }
 func (s Float64s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Float64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Float64s) GetBinaryCodec() binary.Codec { return integerCodec[Float64s](8) }
+
+// ------------------------------------------------------------------------------
 
 type integerSliceCodec struct {
 	sliceType reflect.Type

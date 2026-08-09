@@ -7,6 +7,8 @@ import (
 	"github.com/kelindar/binary"
 )
 
+// ------------------------------------------------------------------------------
+
 type tczCodec struct{}
 
 func (tczCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {

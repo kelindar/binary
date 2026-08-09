@@ -167,6 +167,8 @@ func (c *deltaSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err err
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 func UintsCodecAs(sliceType reflect.Type, sizeOfInt int) binary.Codec {
 	return &deltaSliceCodec{sliceType: sliceType, sizeOfInt: sizeOfInt, unsigned: true}
 }
@@ -187,6 +189,8 @@ func isSorted(data []uint64) bool {
 	}
 	return true
 }
+
+// ------------------------------------------------------------------------------
 
 type timestampCodec struct{}
 

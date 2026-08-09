@@ -43,6 +43,8 @@ func newReader(r io.Reader) reader {
 	}
 }
 
+// --------------------------------------- Slice Reader ---------------------------------------
+
 type sliceReader struct {
 	buffer []byte
 	offset int // current reading index
@@ -175,6 +177,8 @@ func (r *sliceReader) ReadVarint() (int64, error) {
 }
 
 func (r *sliceReader) Reset(b []byte) { r.buffer, r.offset = b, 0 }
+
+// --------------------------------------- Stream Reader ---------------------------------------
 
 type streamReader struct {
 	Reader

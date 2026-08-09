@@ -7,12 +7,16 @@ import (
 	"reflect"
 )
 
+// ------------------------------------------------------------------------------
+
 type Uint16s []uint16
 
 func (s Uint16s) Len() int                      { return len(s) }
 func (s Uint16s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint16s) GetBinaryCodec() binary.Codec { return UintsCodecAs(reflect.TypeFor[Uint16s](), 2) }
+
+// ------------------------------------------------------------------------------
 
 type Int16s []int16
 
@@ -21,12 +25,16 @@ func (s Int16s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int16s) GetBinaryCodec() binary.Codec { return IntsCodecAs(reflect.TypeFor[Int16s](), 2) }
 
+// ------------------------------------------------------------------------------
+
 type Uint32s []uint32
 
 func (s Uint32s) Len() int                      { return len(s) }
 func (s Uint32s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint32s) GetBinaryCodec() binary.Codec { return UintsCodecAs(reflect.TypeFor[Uint32s](), 4) }
+
+// ------------------------------------------------------------------------------
 
 type Int32s []int32
 
@@ -35,12 +43,16 @@ func (s Int32s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int32s) GetBinaryCodec() binary.Codec { return IntsCodecAs(reflect.TypeFor[Int32s](), 4) }
 
+// ------------------------------------------------------------------------------
+
 type Uint64s []uint64
 
 func (s Uint64s) Len() int                      { return len(s) }
 func (s Uint64s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Uint64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Uint64s) GetBinaryCodec() binary.Codec { return UintsCodecAs(reflect.TypeFor[Uint64s](), 8) }
+
+// ------------------------------------------------------------------------------
 
 type Int64s []int64
 
@@ -49,9 +61,13 @@ func (s Int64s) Less(i, j int) bool            { return s[i] < s[j] }
 func (s Int64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
 func (s *Int64s) GetBinaryCodec() binary.Codec { return IntsCodecAs(reflect.TypeFor[Int64s](), 8) }
 
+// ------------------------------------------------------------------------------
+
 type Timestamps []uint64
 
 func (ts *Timestamps) GetBinaryCodec() binary.Codec { return timestampCodec{} }
+
+// ------------------------------------------------------------------------------
 
 type TimeSeries struct {
 	Time []uint64  // Sorted timestamps compressed using delta-encoding
@@ -69,6 +85,8 @@ func (ts *TimeSeries) Swap(i, j int) {
 	ts.Data[i], ts.Data[j] = ts.Data[j], ts.Data[i]
 }
 func (ts *TimeSeries) GetBinaryCodec() binary.Codec { return tszCodec{} }
+
+// ------------------------------------------------------------------------------
 
 type TimeCounters struct {
 	Time []uint64 // Sorted timestamps compressed using delta-encoding

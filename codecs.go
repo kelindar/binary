@@ -23,6 +23,8 @@ type Codec interface {
 	DecodeTo(*Decoder, reflect.Value) error
 }
 
+// ------------------------------------------------------------------------------
+
 type reflectCollectionCodec struct {
 	elemCodec Codec
 	array     bool
@@ -148,6 +150,8 @@ func (c *reflectCollectionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 type reflectSliceOfPtrCodec struct {
 	elemCodec Codec        // The codec of the slice's elements
 	elemType  reflect.Type // The type of the element
@@ -213,6 +217,8 @@ func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 type byteSliceCodec struct{}
 
 func (c *byteSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
@@ -252,6 +258,8 @@ func (c *byteSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	}
 	return
 }
+
+// ------------------------------------------------------------------------------
 
 type stringSliceCodec struct {
 	array  bool
@@ -345,6 +353,8 @@ func (c *stringSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 type boolSliceCodec struct{}
 
 func (c *boolSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
@@ -385,6 +395,8 @@ func (c *boolSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	}
 	return
 }
+
+// ------------------------------------------------------------------------------
 
 type fixedSliceCodec struct {
 	elemSize uintptr
@@ -546,6 +558,8 @@ func (c *fixedSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	return nil
 }
 
+// ------------------------------------------------------------------------------
+
 type varSliceCodec struct {
 	elemSize uintptr
 	signed   bool
@@ -647,6 +661,9 @@ func (c *varSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	}
 	return
 }
+
+// ------------------------------------------------------------------------------
+
 func decodeVarints(d *Decoder, base unsafe.Pointer, n int, elemSize uintptr) (err error) {
 	switch elemSize {
 	case 1:
@@ -757,6 +774,8 @@ func readUnsigned[T integer](d *Decoder, values []T) error {
 	return nil
 }
 
+// ------------------------------------------------------------------------------
+
 type reflectPointerCodec struct {
 	elemCodec Codec
 }
@@ -783,6 +802,8 @@ func (c *reflectPointerCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error)
 	}
 	return c.elemCodec.DecodeTo(d, rv.Elem())
 }
+
+// ------------------------------------------------------------------------------
 
 type reflectStructCodec []fieldCodec
 
@@ -1094,6 +1115,8 @@ func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	return
 }
 
+// ------------------------------------------------------------------------------
+
 type customCodec struct {
 	marshaler      *reflect.Method
 	unmarshaler    *reflect.Method
@@ -1188,6 +1211,8 @@ func customMethod(rv reflect.Value, method, pointer *reflect.Method) *reflect.Va
 	}
 	return nil
 }
+
+// ------------------------------------------------------------------------------
 
 type reflectMapCodec struct {
 	key Codec // Codec for the key
@@ -1607,6 +1632,8 @@ func (c *reflectMapCodec) readKey(d *Decoder, key reflect.Value, arena *[]byte) 
 	}
 	return nil
 }
+
+// ------------------------------------------------------------------------------
 
 type primitiveCodec struct{}
 
