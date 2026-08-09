@@ -11,15 +11,17 @@ import (
 	"unsafe"
 )
 
-// ErrMultipleArms is returned when encoding a union with more than one non-nil arm.
 var ErrMultipleArms = errors.New("binary: multiple union arms set")
 
-// Pooled scratch buffers for framing union arm payloads.
+type tagState struct {
+	bytes.Buffer
+	encoder Encoder
+}
+
 var tagBuffers = sync.Pool{New: func() any {
-	return new(bytes.Buffer)
+	return new(tagState)
 }}
 
-// unionArm is a scan-time arm descriptor for a tagged union struct.
 type unionArm struct {
 	tag    uint64
 	index  int
@@ -28,7 +30,6 @@ type unionArm struct {
 	codec  Codec
 }
 
-// reflectUnionCodec encodes a pointer-arm struct as uvarint(tag)+uvarint(len)+body.
 type reflectUnionCodec struct {
 	arms  []unionArm
 	byTag []int // tag → index into arms; -1 = unknown; sized maxTag+1
@@ -40,7 +41,6 @@ func (c *reflectUnionCodec) lookup(tag uint64) *unionArm {
 	}
 	return &c.arms[c.byTag[tag]]
 }
-
 func (c *reflectUnionCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	selected, elem := c.findArm(rv)
 	switch selected {
@@ -50,33 +50,27 @@ func (c *reflectUnionCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 		e.WriteTagged(0, nil)
 		return e.err
 	}
-
-	buf := tagBuffers.Get().(*bytes.Buffer)
-	buf.Reset()
-	tmp := encoders.Get().(*Encoder)
-	tmp.Reset(buf)
-	err = selected.codec.EncodeTo(tmp, elem)
+	state := tagBuffers.Get().(*tagState)
+	state.Buffer.Reset()
+	state.encoder.Reset(&state.Buffer)
+	err = selected.codec.EncodeTo(&state.encoder, elem)
 	if err == nil {
-		err = tmp.err
+		err = state.encoder.err
 	}
 	if err != nil {
-		encoders.Put(tmp)
-		tagBuffers.Put(buf)
+		tagBuffers.Put(state)
 		return err
 	}
-	e.WriteTagged(selected.tag, buf.Bytes())
-	encoders.Put(tmp)
-	tagBuffers.Put(buf)
+	e.WriteTagged(selected.tag, state.Bytes())
+	tagBuffers.Put(state)
 	return e.err
 }
-
 func (c *reflectUnionCodec) findArm(rv reflect.Value) (*unionArm, reflect.Value) {
 	if rv.CanAddr() {
 		return c.findArmUnsafe(rv)
 	}
 	return c.findArmReflect(rv)
 }
-
 func (c *reflectUnionCodec) findArmUnsafe(rv reflect.Value) (*unionArm, reflect.Value) {
 	base := unsafe.Pointer(rv.UnsafeAddr())
 	var (
@@ -118,8 +112,6 @@ func (c *reflectUnionCodec) findArmReflect(rv reflect.Value) (*unionArm, reflect
 	return selected, elem
 }
 
-// errArm is a sentinel used by findArm to signal ErrMultipleArms without
-// allocating; EncodeTo checks for it by pointer.
 var errArm = unionArm{}
 
 func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
@@ -127,13 +119,11 @@ func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if err != nil {
 		return err
 	}
-
 	arm := c.lookup(tag)
 	if arm == nil {
 		c.clearValue(rv)
 		return nil
 	}
-
 	var ptr reflect.Value
 	if rv.CanAddr() {
 		base := unsafe.Pointer(rv.UnsafeAddr())
@@ -144,14 +134,12 @@ func (c *reflectUnionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	} else {
 		c.clearValue(rv)
 	}
-
 	if !ptr.IsValid() {
 		ptr = reflect.New(arm.elem)
 	}
-	if err = c.decodeArm(arm.codec, body, ptr.Elem()); err != nil {
+	if err = c.decodeArm(d, arm.codec, body, ptr.Elem()); err != nil {
 		return err
 	}
-
 	if rv.CanAddr() {
 		*(*unsafe.Pointer)(unsafe.Add(unsafe.Pointer(rv.UnsafeAddr()), arm.offset)) = ptr.UnsafePointer()
 	} else {
@@ -172,12 +160,26 @@ func (c *reflectUnionCodec) clearValue(rv reflect.Value) {
 	}
 }
 
-func (c *reflectUnionCodec) decodeArm(codec Codec, body []byte, elem reflect.Value) error {
+func (c *reflectUnionCodec) decodeArm(d *Decoder, codec Codec, body []byte, elem reflect.Value) error {
+	if d.slice != nil {
+		r := d.slice
+		buffer, offset := r.buffer, r.offset
+		arena := d.arena
+		r.buffer, r.offset = body, 0
+		err := codec.DecodeTo(d, elem)
+		r.buffer, r.offset = buffer, offset
+		if arena == nil {
+			d.arena = nil
+		}
+		return err
+	}
 	dec := decoders.Get().(*Decoder)
 	dec.reader.(*sliceReader).Reset(body)
 	dec.last = nil
 	dec.codec = nil
+	dec.arena = nil
 	err := codec.DecodeTo(dec, elem)
+	dec.arena = nil
 	decoders.Put(dec)
 	return err
 }

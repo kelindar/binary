@@ -7,6 +7,7 @@ import (
 	"bytes"
 	stdbinary "encoding/binary"
 	"errors"
+	"io"
 	"reflect"
 	"sync"
 	"testing"
@@ -53,6 +54,15 @@ type payloadWithSkip struct {
 	mu    sync.Mutex    `binary:"-"`
 	Text  *textPayload  `binary:"1,union"`
 	Image *imagePayload `binary:"2,union"`
+}
+
+type unionFailingPayload struct{}
+
+func (unionFailingPayload) MarshalBinary() ([]byte, error) { return nil, io.ErrClosedPipe }
+func (*unionFailingPayload) UnmarshalBinary([]byte) error  { return nil }
+
+type unionFailingEnvelope struct {
+	Arm *unionFailingPayload `binary:"1,union"`
 }
 
 // ---- TestUnion ---------------------------------------------------------------
@@ -166,6 +176,18 @@ func TestUnion(t *testing.T) {
 		_, ok := c1.(*reflectUnionCodec)
 		assert.True(t, ok)
 	})
+}
+
+func TestUnionBranches(t *testing.T) {
+	in := payload{Text: &textPayload{Msg: "stream"}}
+	data, err := Marshal(in)
+	assert.NoError(t, err)
+	var out payload
+	assert.NoError(t, NewDecoder(bytes.NewReader(data)).Decode(&out))
+	assert.Equal(t, in, out)
+
+	_, err = Marshal(unionFailingEnvelope{Arm: &unionFailingPayload{}})
+	assert.Equal(t, io.ErrClosedPipe, err)
 }
 
 // ---- TestUnionScan -----------------------------------------------------------

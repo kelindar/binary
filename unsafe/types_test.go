@@ -4,6 +4,9 @@
 package unsafe
 
 import (
+	"bytes"
+	stdbinary "encoding/binary"
+	"io"
 	"sort"
 	"testing"
 
@@ -63,6 +66,39 @@ func TestTypes(t *testing.T) {
 			assert.Equal(t, tc.value, deref(tc.out))
 		})
 	}
+}
+
+func TestIntegerDecodeErrors(t *testing.T) {
+	for _, out := range []any{
+		new(Bools),
+		new(Uint16s),
+		new(Int16s),
+		new(Uint32s),
+		new(Int32s),
+		new(Uint64s),
+		new(Int64s),
+	} {
+		assert.Error(t, binary.Unmarshal(nil, out))
+	}
+
+	zero := make([]byte, 8)
+	var empty Uint16s
+	assert.NoError(t, binary.Unmarshal(zero, &empty))
+	assert.Empty(t, empty)
+
+	truncated := make([]byte, 8)
+	stdbinary.LittleEndian.PutUint64(truncated, 1)
+	for _, out := range []any{new(Bools), new(Uint16s), new(Int16s), new(Uint32s), new(Int32s), new(Uint64s), new(Int64s)} {
+		assert.Error(t, binary.Unmarshal(truncated, out))
+	}
+
+	tooLarge := make([]byte, 8)
+	stdbinary.LittleEndian.PutUint64(tooLarge, uint64(^uint(0)>>1))
+	assert.Equal(t, io.ErrUnexpectedEOF, binary.Unmarshal(tooLarge, new(Uint16s)))
+
+	data := append(truncated, bytes.Repeat([]byte{0}, 8)...)
+	var values Uint64s
+	assert.NoError(t, binary.Unmarshal(data, &values))
 }
 
 func TestSort(t *testing.T) {

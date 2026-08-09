@@ -5,6 +5,7 @@ package sorted
 
 import (
 	"bytes"
+	stdbinary "encoding/binary"
 	"reflect"
 	"testing"
 
@@ -112,6 +113,50 @@ func TestDecodeShort(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					assert.Error(t, binary.Unmarshal(input, out))
 				})
+			}
+		})
+	}
+}
+
+func TestLength(t *testing.T) {
+	data := stdbinary.AppendUvarint(nil, ^uint64(0))
+	tests := map[string]struct {
+		data []byte
+		out  any
+	}{
+		"delta slice":   {data: data, out: new(Int32s)},
+		"timestamps":    {data: append(append([]byte{}, data...), 0), out: new(Timestamps)},
+		"time series":   {data: append(append([]byte{}, data...), 0), out: new(TimeSeries)},
+		"time counters": {data: append(append([]byte{}, data...), 0), out: new(TimeCounters)},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("malformed length panicked: %v", recovered)
+				}
+			}()
+			if err := binary.Unmarshal(tc.data, tc.out); err == nil {
+				t.Fatal("expected malformed length to return an error")
+			}
+		})
+	}
+}
+
+func TestSeriesBounds(t *testing.T) {
+	tests := map[string]any{
+		"time series":   TimeSeries{Time: []uint64{2, 1}, Data: []float64{1}},
+		"time counters": TimeCounters{Time: []uint64{2, 1}, Data: []uint64{1}},
+	}
+	for name, input := range tests {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("mismatched series panicked: %v", recovered)
+				}
+			}()
+			if _, err := binary.Marshal(input); err == nil {
+				t.Fatal("expected mismatched series to return an error")
 			}
 		})
 	}

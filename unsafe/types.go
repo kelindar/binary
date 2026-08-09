@@ -1,9 +1,9 @@
 // Copyright (c) Roman Atachiants and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for details.
-
 package unsafe
 
 import (
+	"io"
 	"reflect"
 	"unsafe"
 
@@ -12,152 +12,83 @@ import (
 
 // ------------------------------------------------------------------------------
 
-// Bools represents a slice serialized in an unsafe, non portable manner.
 type Bools []bool
 
-// GetBinaryCodec retrieves a custom binary codec.
 func (s *Bools) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Bools](),
-		sizeOfInt: 1,
-	}
+	return &integerSliceCodec{sliceType: reflect.TypeFor[Bools](), sizeOfInt: 1}
 }
 
 // ------------------------------------------------------------------------------
 
-// Uint16s represents a slice serialized in an unsafe, non portable manner.
 type Uint16s []uint16
 
-func (s Uint16s) Len() int           { return len(s) }
-func (s Uint16s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Uint16s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Uint16s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Uint16s](),
-		sizeOfInt: 2,
-	}
-}
+func (s Uint16s) Len() int                      { return len(s) }
+func (s Uint16s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Uint16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Uint16s) GetBinaryCodec() binary.Codec { return integerCodec[Uint16s](2) }
 
 // ------------------------------------------------------------------------------
 
-// Int16s represents a slice serialized in an unsafe, non portable manner.
 type Int16s []int16
 
-func (s Int16s) Len() int           { return len(s) }
-func (s Int16s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Int16s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Int16s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Int16s](),
-		sizeOfInt: 2,
-	}
-}
+func (s Int16s) Len() int                      { return len(s) }
+func (s Int16s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Int16s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Int16s) GetBinaryCodec() binary.Codec { return integerCodec[Int16s](2) }
 
 // ------------------------------------------------------------------------------
 
-// Uint32s represents a slice serialized in an unsafe, non portable manner.
 type Uint32s []uint32
 
-func (s Uint32s) Len() int           { return len(s) }
-func (s Uint32s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Uint32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Uint32s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Uint32s](),
-		sizeOfInt: 4,
-	}
-}
+func (s Uint32s) Len() int                      { return len(s) }
+func (s Uint32s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Uint32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Uint32s) GetBinaryCodec() binary.Codec { return integerCodec[Uint32s](4) }
 
 // ------------------------------------------------------------------------------
 
-// Int32s represents a slice serialized in an unsafe, non portable manner.
 type Int32s []int32
 
-func (s Int32s) Len() int           { return len(s) }
-func (s Int32s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Int32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Int32s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Int32s](),
-		sizeOfInt: 4,
-	}
-}
+func (s Int32s) Len() int                      { return len(s) }
+func (s Int32s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Int32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Int32s) GetBinaryCodec() binary.Codec { return integerCodec[Int32s](4) }
 
 // ------------------------------------------------------------------------------
 
-// Uint64s represents a slice serialized in an unsafe, non portable manner.
 type Uint64s []uint64
 
-func (s Uint64s) Len() int           { return len(s) }
-func (s Uint64s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Uint64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Uint64s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Uint64s](),
-		sizeOfInt: 8,
-	}
-}
+func (s Uint64s) Len() int                      { return len(s) }
+func (s Uint64s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Uint64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Uint64s) GetBinaryCodec() binary.Codec { return integerCodec[Uint64s](8) }
 
 // ------------------------------------------------------------------------------
 
-// Int64s represents a slice serialized in an unsafe, non portable manner.
 type Int64s []int64
 
-func (s Int64s) Len() int           { return len(s) }
-func (s Int64s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Int64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Int64s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Int64s](),
-		sizeOfInt: 8,
-	}
-}
+func (s Int64s) Len() int                      { return len(s) }
+func (s Int64s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Int64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Int64s) GetBinaryCodec() binary.Codec { return integerCodec[Int64s](8) }
 
 // ------------------------------------------------------------------------------
 
-// Float32s represents a slice serialized in an unsafe, non portable manner.
 type Float32s []float32
 
-func (s Float32s) Len() int           { return len(s) }
-func (s Float32s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Float32s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Float32s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Float32s](),
-		sizeOfInt: 4,
-	}
-}
+func (s Float32s) Len() int                      { return len(s) }
+func (s Float32s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Float32s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Float32s) GetBinaryCodec() binary.Codec { return integerCodec[Float32s](4) }
 
 // ------------------------------------------------------------------------------
 
-// Float64s represents a slice serialized in an unsafe, non portable manner.
 type Float64s []float64
 
-func (s Float64s) Len() int           { return len(s) }
-func (s Float64s) Less(i, j int) bool { return s[i] < s[j] }
-func (s Float64s) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-
-// GetBinaryCodec retrieves a custom binary codec.
-func (s *Float64s) GetBinaryCodec() binary.Codec {
-	return &integerSliceCodec{
-		sliceType: reflect.TypeFor[Float64s](),
-		sizeOfInt: 8,
-	}
-}
+func (s Float64s) Len() int                      { return len(s) }
+func (s Float64s) Less(i, j int) bool            { return s[i] < s[j] }
+func (s Float64s) Swap(i, j int)                 { s[i], s[j] = s[j], s[i] }
+func (s *Float64s) GetBinaryCodec() binary.Codec { return integerCodec[Float64s](8) }
 
 // ------------------------------------------------------------------------------
 
@@ -166,23 +97,43 @@ type integerSliceCodec struct {
 	sizeOfInt int
 }
 
-// EncodeTo encodes a value into the encoder.
+func decodeLength(n uint64) (int, error) {
+	if n > uint64(^uint(0)>>1) {
+		return 0, io.ErrUnexpectedEOF
+	}
+	return int(n), nil
+}
+
+func integerCodec[T any](size int) binary.Codec {
+	return &integerSliceCodec{sliceType: reflect.TypeFor[T](), sizeOfInt: size}
+}
 func (c *integerSliceCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	n := rv.Len() * c.sizeOfInt
 	e.WriteUint64(uint64(rv.Len()))
 	e.Write(unsafe.Slice((*byte)(rv.UnsafePointer()), n))
 	return
 }
-
-// DecodeTo decodes into a reflect value from the decoder.
 func (c *integerSliceCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) (err error) {
 	var l uint64
-	if l, err = d.ReadUint64(); err == nil && l > 0 {
-		src := reflect.MakeSlice(c.sliceType, int(l), int(l))
-		data := unsafe.Slice((*byte)(src.UnsafePointer()), int(l)*c.sizeOfInt)
-		if _, err = d.Read(data); err == nil {
-			rv.Set(src)
-		}
+	if l, err = d.ReadUint64(); err != nil {
+		return
 	}
+	if l == 0 {
+		rv.SetZero()
+		return nil
+	}
+	n, err := decodeLength(l)
+	if err != nil {
+		return err
+	}
+	if n > int(^uint(0)>>1)/c.sizeOfInt {
+		return io.ErrUnexpectedEOF
+	}
+	size := n * c.sizeOfInt
+	src := reflect.MakeSlice(c.sliceType, n, n)
+	if _, err = io.ReadFull(d, unsafe.Slice((*byte)(src.UnsafePointer()), size)); err != nil {
+		return err
+	}
+	rv.Set(src)
 	return
 }

@@ -11,42 +11,32 @@ import (
 	"sync"
 )
 
-// Map of all the schemas we've encountered so far
 var schemas = new(sync.Map)
 
-// Scan gets a codec for the type and uses a cached schema if the type was
-// previously scanned.
 func scan(t reflect.Type) (c Codec, err error) {
-
-	// Attempt to load from cache first
 	if f, ok := schemas.Load(t); ok {
-		c = f.(Codec)
-		return
+		return f.(Codec), nil
 	}
-
-	// Scan for the first time
 	c, err = scanType(t)
 	if err != nil {
-		return
+		return nil, err
 	}
-
-	// Load or store again
 	if f, ok := schemas.LoadOrStore(t, c); ok {
 		c = f.(Codec)
-		return
 	}
-	return
+	return c, nil
 }
 
-// ScanType scans the type
 func scanType(t reflect.Type) (Codec, error) {
 	if custom, ok := scanCustomCodec(t); ok {
+		if custom == nil {
+			return nil, errors.New("binary: GetBinaryCodec returned nil for " + t.String())
+		}
 		return custom, nil
 	}
 	if custom, ok := scanBinaryMarshaler(t); ok {
 		return custom, nil
 	}
-
 	switch t.Kind() {
 	case reflect.Ptr:
 		return scanPointer(t)
@@ -75,55 +65,60 @@ func scanPointer(t reflect.Type) (Codec, error) {
 }
 
 func scanArray(t reflect.Type) (Codec, error) {
-	if codec := scanFixedWidth(t.Elem(), true); codec != nil {
+	if codec := scanFixedWidth(t.Elem(), true, t.Len()); codec != nil {
 		return codec, nil
 	}
 	elemCodec, err := scanType(t.Elem())
 	if err != nil {
 		return nil, err
 	}
-	return &reflectArrayCodec{elemCodec: elemCodec}, nil
+	return &reflectCollectionCodec{elemCodec: elemCodec, array: true, length: t.Len()}, nil
 }
 
 func scanSlice(t reflect.Type) (Codec, error) {
-	if codec := scanFixedWidth(t.Elem(), false); codec != nil {
+	if codec := scanFixedWidth(t.Elem(), false, 0); codec != nil {
 		return codec, nil
+	}
+	elem, err := scanType(t.Elem())
+	if err != nil {
+		return nil, err
 	}
 	switch t.Elem().Kind() {
 	case reflect.Uint8:
-		return new(byteSliceCodec), nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return new(byteSliceCodec), nil
+		}
 	case reflect.Bool:
-		return new(boolSliceCodec), nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return new(boolSliceCodec), nil
+		}
 	case reflect.Uint, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return &varuintSliceCodec{elemSize: t.Elem().Size()}, nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return &varSliceCodec{elemSize: t.Elem().Size()}, nil
+		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return &varintSliceCodec{elemSize: t.Elem().Size()}, nil
+		if _, ok := elem.(*primitiveCodec); ok {
+			return &varSliceCodec{elemSize: t.Elem().Size(), signed: true}, nil
+		}
 	case reflect.Ptr:
-		elemCodec, err := scanType(t.Elem().Elem())
-		if err != nil {
-			return nil, err
+		if pointer, ok := elem.(*reflectPointerCodec); ok {
+			return &reflectSliceOfPtrCodec{
+				elemType:  t.Elem().Elem(),
+				elemCodec: pointer.elemCodec,
+			}, nil
 		}
-		return &reflectSliceOfPtrCodec{
-			elemType:  t.Elem().Elem(),
-			elemCodec: elemCodec,
-		}, nil
-	default:
-		elemCodec, err := scanType(t.Elem())
-		if err != nil {
-			return nil, err
-		}
-		return &reflectSliceCodec{elemCodec: elemCodec}, nil
 	}
+	return &reflectCollectionCodec{elemCodec: elem}, nil
 }
 
-func scanFixedWidth(elem reflect.Type, array bool) Codec {
+func scanFixedWidth(elem reflect.Type, array bool, length int) Codec {
 	switch elem {
 	case reflect.TypeFor[string]():
-		return &stringSliceCodec{array: array}
+		return &stringSliceCodec{array: array, length: length}
 	case reflect.TypeFor[float32](), reflect.TypeFor[float64]():
-		return &floatSliceCodec{elemSize: elem.Size(), array: array}
+		return &fixedSliceCodec{elemSize: elem.Size(), array: array, length: length}
 	case reflect.TypeFor[complex64](), reflect.TypeFor[complex128]():
-		return &complexSliceCodec{elemSize: elem.Size(), array: array}
+		return &fixedSliceCodec{elemSize: elem.Size(), array: array, complex: true, length: length}
 	default:
 		return nil
 	}
@@ -138,18 +133,16 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		seen      map[uint64]struct{}
 		maxTag    uint64
 	)
-
 	for i := range n {
 		field := t.Field(i)
 		tag := field.Tag.Get("binary")
 		switch {
-		case field.Name == "_" || tag == "-":
+		case field.Name == "_" || field.PkgPath != "" || tag == "-":
 			continue
 		case tag == "":
 			hasPlain = true
 			continue
 		}
-
 		value, option, ok := strings.Cut(tag, ",")
 		if !ok {
 			hasPlain = true
@@ -158,7 +151,6 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		if option != "union" {
 			return nil, errors.New("binary: invalid tag " + strconv.Quote(tag) + " on " + t.String())
 		}
-
 		id, err := strconv.ParseUint(value, 10, 64)
 		switch {
 		case err != nil || id == 0 || id > maxUnionTag:
@@ -177,7 +169,6 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 		if id > maxTag {
 			maxTag = id
 		}
-
 		elem := field.Type.Elem()
 		codec, err := scanType(elem)
 		if err != nil {
@@ -191,20 +182,18 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			codec:  codec,
 		})
 	}
-
 	switch {
 	case hasTagged && hasPlain:
 		return nil, errors.New("binary: mixed union and sequential fields on " + t.String())
 	case hasTagged:
 		return newUnionCodec(arms, maxTag), nil
 	}
-
 	v := make(reflectStructCodec, n)
 	hasDirect := false
 	for i := range n {
 		field := t.Field(i)
 		tag := field.Tag.Get("binary")
-		if field.Name == "_" || tag == "-" {
+		if field.Name == "_" || field.PkgPath != "" || tag == "-" {
 			continue
 		}
 		codec, err := scanType(field.Type)
@@ -212,13 +201,15 @@ func scanStructCodec(t reflect.Type) (Codec, error) {
 			return nil, err
 		}
 		kind := reflect.Invalid
-		switch codec.(type) {
-		case *stringCodec, *boolCodec, *varintCodec, *varuintCodec,
-			*complex64Codec, *complex128Codec, *float32Codec, *float64Codec:
+		switch codec := codec.(type) {
+		case *primitiveCodec:
 			kind = field.Type.Kind()
 			hasDirect = true
-		case *varuintSliceCodec:
-			switch codec.(*varuintSliceCodec).elemSize {
+		case *varSliceCodec:
+			if codec.signed {
+				break
+			}
+			switch codec.elemSize {
 			case 2:
 				kind = fieldVaruint2
 			case 4:
@@ -262,15 +253,14 @@ func newUnionCodec(arms []unionArm, maxTag uint64) *reflectUnionCodec {
 func scanMap(t reflect.Type) (Codec, error) {
 	switch t {
 	case reflect.TypeFor[map[string][]byte]():
-		return new(stringBytesMapCodec), nil
+		return stringMapCodec[[]byte]{}, nil
 	case reflect.TypeFor[map[string]string]():
-		return new(stringStringMapCodec), nil
+		return stringMapCodec[string]{}, nil
 	case reflect.TypeFor[map[uint64]uint64]():
 		return new(uint64MapCodec), nil
 	case reflect.TypeFor[map[string]uint64]():
-		return new(stringUint64MapCodec), nil
+		return stringMapCodec[uint64]{}, nil
 	}
-
 	key, err := scanType(t.Key())
 	if err != nil {
 		return nil, err
@@ -284,60 +274,75 @@ func scanMap(t reflect.Type) (Codec, error) {
 
 func scanPrimitive(kind reflect.Kind) Codec {
 	switch kind {
-	case reflect.String:
-		return new(stringCodec)
-	case reflect.Bool:
-		return new(boolCodec)
-	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int, reflect.Int64:
-		return new(varintCodec)
-	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint, reflect.Uint64:
-		return new(varuintCodec)
-	case reflect.Complex64:
-		return new(complex64Codec)
-	case reflect.Complex128:
-		return new(complex128Codec)
-	case reflect.Float32:
-		return new(float32Codec)
-	case reflect.Float64:
-		return new(float64Codec)
+	case reflect.String, reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Complex64, reflect.Complex128, reflect.Float32, reflect.Float64:
+		return new(primitiveCodec)
 	default:
 		return nil
 	}
 }
 
-// scanBinaryMarshaler scans whether a type has a custom binary marshaling implemented.
 func scanBinaryMarshaler(t reflect.Type) (Codec, bool) {
 	out := new(customCodec)
-	if m, ok := t.MethodByName("MarshalBinary"); ok {
-		out.marshaler = &m
-	} else if m, ok := reflect.PtrTo(t).MethodByName("MarshalBinary"); ok {
-		out.ptrMarshaler = &m
-	}
-
-	if m, ok := t.MethodByName("UnmarshalBinary"); ok {
-		out.unmarshaler = &m
-	} else if m, ok := reflect.PtrTo(t).MethodByName("UnmarshalBinary"); ok {
-		out.ptrUnmarshaler = &m
-	}
-
-	// Checks whether we have both marshaler and unmarshaler attached
+	out.marshaler, out.ptrMarshaler = findMethod(t, "MarshalBinary", isMarshalMethod)
+	out.unmarshaler, out.ptrUnmarshaler = findMethod(t, "UnmarshalBinary", isUnmarshalMethod)
 	if (out.marshaler != nil || out.ptrMarshaler != nil) &&
 		(out.unmarshaler != nil || out.ptrUnmarshaler != nil) {
 		return out, true
 	}
-
 	return nil, false
 }
 
-// scanCustomCodec scans whether a type has a custom codec implemented.
+func findMethod(t reflect.Type, name string, valid func(reflect.Type) bool) (value, pointer *reflect.Method) {
+	if method, ok := t.MethodByName(name); ok && valid(method.Type) {
+		return &method, nil
+	}
+	if method, ok := reflect.PtrTo(t).MethodByName(name); ok && valid(method.Type) {
+		return nil, &method
+	}
+	return nil, nil
+}
+
 func scanCustomCodec(t reflect.Type) (out Codec, ok bool) {
 	if m, ok := reflect.PtrTo(t).MethodByName("GetBinaryCodec"); ok {
+		if m.Type.NumIn() != 1 || m.Type.NumOut() != 1 || !m.Type.Out(0).Implements(reflect.TypeFor[Codec]()) {
+			return nil, false
+		}
 		callable := reflect.New(t).Method(m.Index)
 		result := callable.Call([]reflect.Value{})
-		if len(result) == 1 && !result[0].IsNil() {
-			out, ok = result[0].Interface().(Codec)
+		if len(result) == 1 {
+			value := result[0]
+			if isNilInterface(value.Interface()) {
+				return nil, true
+			}
+			out, ok = value.Interface().(Codec)
 			return out, ok
 		}
 	}
 	return
+}
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
+func isMarshalMethod(t reflect.Type) bool {
+	return t.NumIn() == 1 && t.NumOut() == 2 &&
+		t.Out(0) == reflect.TypeFor[[]byte]() && t.Out(1) == reflect.TypeFor[error]()
+}
+
+func isUnmarshalMethod(t reflect.Type) bool {
+	return t.NumIn() == 2 && t.In(1) == reflect.TypeFor[[]byte]() &&
+		t.NumOut() == 1 && t.Out(0) == reflect.TypeFor[error]()
 }

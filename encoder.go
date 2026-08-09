@@ -6,45 +6,68 @@ package binary
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
 	"reflect"
 	"sync"
 )
 
-// Reusable long-lived encoder pool.
+var errNilWriter = errors.New("binary: nil writer")
+
 var encoders = &sync.Pool{New: func() any {
 	return new(Encoder)
 }}
 
-// Marshal encodes the payload into binary format.
-func Marshal(v any) (output []byte, err error) {
-	var buffer bytes.Buffer
-	buffer.Grow(64)
+type marshalState struct {
+	bytes.Buffer
+	encoder Encoder
+}
 
-	// Encode and set the buffer if successful
-	if err = MarshalTo(v, &buffer); err == nil {
-		output = buffer.Bytes()
+var marshalBuffers = &sync.Pool{New: func() any {
+	return new(marshalState)
+}}
+
+func marshalCapacity(rv reflect.Value) int {
+	const limit = 1 << 20
+	size := rv.Type().Size()
+	if rv.Kind() == reflect.Array {
+		if size <= limit {
+			return max(64, int(size))
+		}
+		return 64
 	}
+	if rv.Kind() == reflect.Slice {
+		size = rv.Type().Elem().Size()
+	}
+	if size == 0 || size > limit || uintptr(rv.Len()) > limit/size {
+		return 64
+	}
+	return max(64, rv.Len()*int(size))
+}
+
+func Marshal(v any) (output []byte, err error) {
+	state := marshalBuffers.Get().(*marshalState)
+	state.Reset()
+	state.Grow(64)
+	state.encoder.Reset(&state.Buffer)
+	err = state.encoder.Encode(v)
+	if err == nil {
+		output = state.Bytes()
+	}
+	state.Buffer = bytes.Buffer{}
+	marshalBuffers.Put(state)
 	return
 }
 
-// MarshalTo encodes the payload into a specific destination.
 func MarshalTo(v any, dst io.Writer) (err error) {
-
-	// Get the encoder from the pool, reset it
 	e := encoders.Get().(*Encoder)
 	e.Reset(dst)
-
-	// Encode and set the buffer if successful
 	err = e.Encode(v)
-
-	// Put the encoder back when we're finished
 	encoders.Put(e)
 	return
 }
 
-// Encoder represents a binary encoder.
 type Encoder struct {
 	scratch [10]byte
 	last    reflect.Type
@@ -53,27 +76,39 @@ type Encoder struct {
 	err     error
 }
 
-// NewEncoder creates a new encoder.
 func NewEncoder(out io.Writer) *Encoder {
-	return &Encoder{out: out}
+	e := new(Encoder)
+	e.Reset(out)
+	return e
 }
 
-// Reset resets the encoder and makes it ready to be reused.
 func (e *Encoder) Reset(out io.Writer) {
 	e.out = out
 	e.err = nil
+	if out == nil {
+		e.err = errNilWriter
+		return
+	}
+	if buffer, ok := out.(*bytes.Buffer); ok {
+		if buffer == nil {
+			e.err = errNilWriter
+		}
+		return
+	}
+	if isNilInterface(out) {
+		e.err = errNilWriter
+	}
 }
 
-// Buffer returns the underlying writer.
 func (e *Encoder) Buffer() io.Writer {
 	return e.out
 }
 
-// Encode encodes the value to the binary format.
 func (e *Encoder) Encode(v any) (err error) {
-
-	// Scan the type (this will load from cache)
 	rv := reflect.Indirect(reflect.ValueOf(v))
+	if !rv.IsValid() {
+		return errors.New("binary: cannot encode nil value")
+	}
 	t := rv.Type()
 	c := e.codec
 	if t != e.last {
@@ -83,28 +118,27 @@ func (e *Encoder) Encode(v any) (err error) {
 		e.last = t
 		e.codec = c
 	}
-
-	// Encode the value
+	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil && (rv.Kind() == reflect.Array || rv.Kind() == reflect.Slice) {
+		out.Grow(marshalCapacity(rv))
+	}
 	if err = c.EncodeTo(e, rv); err == nil {
 		err = e.err
 	}
 	return
 }
 
-// Write writes the contents of p into the buffer.
 func (e *Encoder) Write(p []byte) {
-	if e.err == nil {
-		_, e.err = e.out.Write(p)
+	if e.err != nil {
+		return
 	}
+	_, e.err = e.out.Write(p)
 }
 
-// WriteVarint writes a variable size integer
 func (e *Encoder) WriteVarint(v int64) {
 	x := uint64(v) << 1
 	if v < 0 {
 		x = ^x
 	}
-
 	i := 0
 	for x >= 0x80 {
 		e.scratch[i] = byte(x) | 0x80
@@ -115,14 +149,12 @@ func (e *Encoder) WriteVarint(v int64) {
 	e.Write(e.scratch[:(i + 1)])
 }
 
-// WriteUvarint writes a variable size unsigned integer
 func (e *Encoder) WriteUvarint(x uint64) {
 	if x < 0x80 {
 		e.scratch[0] = byte(x)
 		e.Write(e.scratch[:1])
 		return
 	}
-
 	i := 0
 	for x >= 0x80 {
 		e.scratch[i] = byte(x) | 0x80
@@ -133,46 +165,29 @@ func (e *Encoder) WriteUvarint(x uint64) {
 	e.Write(e.scratch[:(i + 1)])
 }
 
-// WriteUint16 writes a Uint16
 func (e *Encoder) WriteUint16(v uint16) {
-	e.scratch[0] = byte(v)
-	e.scratch[1] = byte(v >> 8)
+	binary.LittleEndian.PutUint16(e.scratch[:2], v)
 	e.Write(e.scratch[:2])
 }
 
-// WriteUint32 writes a Uint32
 func (e *Encoder) WriteUint32(v uint32) {
-	e.scratch[0] = byte(v)
-	e.scratch[1] = byte(v >> 8)
-	e.scratch[2] = byte(v >> 16)
-	e.scratch[3] = byte(v >> 24)
+	binary.LittleEndian.PutUint32(e.scratch[:4], v)
 	e.Write(e.scratch[:4])
 }
 
-// WriteUint64 writes a Uint64
 func (e *Encoder) WriteUint64(v uint64) {
-	e.scratch[0] = byte(v)
-	e.scratch[1] = byte(v >> 8)
-	e.scratch[2] = byte(v >> 16)
-	e.scratch[3] = byte(v >> 24)
-	e.scratch[4] = byte(v >> 32)
-	e.scratch[5] = byte(v >> 40)
-	e.scratch[6] = byte(v >> 48)
-	e.scratch[7] = byte(v >> 56)
+	binary.LittleEndian.PutUint64(e.scratch[:8], v)
 	e.Write(e.scratch[:8])
 }
 
-// WriteFloat32 a 32-bit floating point number
 func (e *Encoder) WriteFloat32(v float32) {
 	e.WriteUint32(math.Float32bits(v))
 }
 
-// WriteFloat64 a 64-bit floating point number
 func (e *Encoder) WriteFloat64(v float64) {
 	e.WriteUint64(math.Float64bits(v))
 }
 
-// WriteBool writes a single boolean value into the buffer
 func (e *Encoder) writeBool(v bool) {
 	e.scratch[0] = 0
 	if v {
@@ -181,24 +196,25 @@ func (e *Encoder) writeBool(v bool) {
 	e.Write(e.scratch[:1])
 }
 
-// Writes a complex number
 func (e *Encoder) writeComplex64(v complex64) {
+	if e.err != nil {
+		return
+	}
 	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
 
-// Writes a complex number
 func (e *Encoder) writeComplex128(v complex128) {
+	if e.err != nil {
+		return
+	}
 	e.err = binary.Write(e.out, binary.LittleEndian, v)
 }
 
-// WriteString writes a string prefixed with a variable-size integer size.
 func (e *Encoder) WriteString(v string) {
 	e.WriteUvarint(uint64(len(v)))
 	e.Write(ToBytes(v))
 }
 
-// WriteTagged writes a length-prefixed tagged payload as uvarint(tag) +
-// uvarint(len) + body. Used for oneof/versioning unions.
 func (e *Encoder) WriteTagged(tag uint64, body []byte) {
 	e.WriteUvarint(tag)
 	e.WriteUvarint(uint64(len(body)))

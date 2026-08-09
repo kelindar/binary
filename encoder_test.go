@@ -5,12 +5,17 @@ package binary
 
 import (
 	"bytes"
+	"io"
 	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
+
+type errorWriter struct{}
+
+func (errorWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
 
 type composite map[string]column
 
@@ -122,4 +127,27 @@ func testEncoderCustomCodec(t *testing.T) {
 	err = Unmarshal(b, &out)
 	assert.NoError(t, err)
 	assert.Equal(t, v, out)
+}
+
+func TestEncoderErrorPaths(t *testing.T) {
+	e := NewEncoder(nil)
+	assert.Error(t, e.err)
+	var nilBuffer *bytes.Buffer
+	e.Reset(nilBuffer)
+	assert.Error(t, e.err)
+	var nilWriter *errorWriter
+	e.Reset(nilWriter)
+	assert.Error(t, e.err)
+
+	e.Reset(io.Discard)
+	e.err = io.ErrClosedPipe
+	e.Write([]byte("ignored"))
+	assert.Equal(t, io.ErrClosedPipe, e.err)
+
+	assert.Equal(t, "binary: cannot encode nil value", NewEncoder(io.Discard).Encode(nil).Error())
+	assert.Error(t, MarshalTo([]complex64{1 + 2i}, errorWriter{}))
+	assert.Error(t, MarshalTo([]complex128{1 + 2i}, errorWriter{}))
+
+	large := reflect.New(reflect.ArrayOf(1<<20+1, reflect.TypeFor[byte]())).Elem()
+	assert.Equal(t, 64, marshalCapacity(large))
 }

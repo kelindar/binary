@@ -4,6 +4,7 @@
 package sorted
 
 import (
+	bin "encoding/binary"
 	"math"
 	"math/bits"
 	"reflect"
@@ -16,139 +17,105 @@ import (
 
 type tszCodec struct{}
 
-// EncodeTo encodes a value into the encoder.
 func (tszCodec) EncodeTo(e *binary.Encoder, rv reflect.Value) (err error) {
 	data := rv.Interface().(TimeSeries)
-	if !sort.IsSorted(&data) {
+	if len(data.Time) != len(data.Data) {
+		return errMismatchedSeries
+	}
+	if !isSorted(data.Time) {
 		sort.Sort(&data)
 	}
-
-	// Write the timestamps into the buffer
 	buffer := appendDelta(
 		make([]byte, 0, 4*len(data.Time)),
 		data.Time,
 	)
-
-	// Write the values into the buffer
 	prev := uint64(0)
 	for _, v := range data.Data {
 		curr := uint64(bits.Reverse32(math.Float32bits(float32(v))))
 		diff := curr ^ prev
 		prev = curr
-		buffer = appendUvarint(buffer, diff)
+		buffer = bin.AppendUvarint(buffer, diff)
 	}
-
-	// Writhe the size and the buffer
 	e.WriteUvarint(uint64(len(data.Time)))
 	e.WriteUvarint(uint64(len(buffer)))
 	e.Write(buffer)
 	return
 }
-
-// DecodeTo decodes into a reflect value from the decoder.
 func (tszCodec) DecodeTo(d *binary.Decoder, rv reflect.Value) error {
-
-	// Read the number of timestamps
 	count, err := d.ReadUvarint()
 	if err != nil {
 		return err
 	}
-
-	// Read the size in bytes
+	n, err := decodeLength(count)
+	if err != nil {
+		return err
+	}
 	size, err := d.ReadUvarint()
 	if err != nil {
 		return err
 	}
-
-	// Read the timestamp buffer
-	buffer, err := d.Slice(int(size))
+	bufferSize, err := decodeLength(size)
 	if err != nil {
 		return err
 	}
-
-	// Read the timestamps
-	result := TimeSeries{
-		Time: make([]uint64, count),
-		Data: make([]float64, count),
+	if n > bufferSize/2 {
+		return errInvalidVarint
 	}
-
+	buffer, err := d.Slice(bufferSize)
+	if err != nil {
+		return err
+	}
+	result := rv.Interface().(TimeSeries)
+	if result.Time == nil || cap(result.Time) < n {
+		result.Time = make([]uint64, n)
+	} else {
+		result.Time = result.Time[:n]
+	}
+	if result.Data == nil || cap(result.Data) < n {
+		result.Data = make([]float64, n)
+	} else {
+		result.Data = result.Data[:n]
+	}
 	offset, err := readDelta(result.Time, buffer)
 	if err != nil {
 		return err
 	}
-
-	// Read encoded values
 	prev := uint64(0)
-	for i := 0; i < int(count); i++ {
-		var diff uint64
-		for shift := uint(0); shift < 64; shift += 7 {
-			if offset >= len(buffer) {
-				return errInvalidVarint
-			}
-			b := buffer[offset]
-			offset++
-			if shift == 63 && b > 1 {
-				return errInvalidVarint
-			}
-			diff |= uint64(b&0x7f) << shift
-			if b < 0x80 {
-				goto value
-			}
+	for i := 0; i < n; i++ {
+		diff, n := bin.Uvarint(buffer[offset:])
+		if n <= 0 {
+			return errInvalidVarint
 		}
-	value:
+		offset += n
 		prev ^= diff
 		result.Data[i] = float64(math.Float32frombits(bits.Reverse32(uint32(prev))))
 	}
-
 	rv.Set(reflect.ValueOf(result))
 	return nil
 }
 
 // ------------------------------------------------------------------------------
 
-// appendDelta appends a delta array into the buffer
 func appendDelta(dst []byte, data []uint64) []byte {
 	prev := uint64(0)
 	for i := range data {
 		diff := data[i] - prev
 		prev = data[i]
-		dst = appendUvarint(dst, diff)
+		dst = bin.AppendUvarint(dst, diff)
 	}
-
 	return dst
 }
 
-func appendUvarint(dst []byte, value uint64) []byte {
-	for value >= 0x80 {
-		dst = append(dst, byte(value)|0x80)
-		value >>= 7
-	}
-	return append(dst, byte(value))
-}
-
-// readDelta reads a delta array from the buffer
 func readDelta(dst []uint64, src []byte) (read int, err error) {
 	prev := uint64(0)
 	for i := range dst {
-		var diff uint64
-		for shift := uint(0); shift < 64; shift += 7 {
-			if read >= len(src) {
-				return read, errInvalidVarint
-			}
-			b := src[read]
-			read++
-			if shift == 63 && b > 1 {
-				return read, errInvalidVarint
-			}
-			diff |= uint64(b&0x7f) << shift
-			if b < 0x80 {
-				prev += diff
-				dst[i] = prev
-				goto next
-			}
+		diff, n := bin.Uvarint(src[read:])
+		if n <= 0 {
+			return read, errInvalidVarint
 		}
-	next:
+		read += n
+		prev += diff
+		dst[i] = prev
 	}
-
 	return read, nil
 }
