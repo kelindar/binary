@@ -953,7 +953,7 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	return
 }
 func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
-	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 && d.slice != nil {
+	if rv.CanAddr() && len(c) > 0 && c[0].Field&fieldDirect != 0 {
 		base := unsafe.Pointer(rv.UnsafeAddr())
 		for i := range c {
 			field := &c[i]
@@ -1060,7 +1060,12 @@ func (c reflectStructCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 					}
 				}
 				if n > 0 {
-					_, err = d.Read(unsafe.Slice((*byte)(sliceData(pointer)), n))
+					buffer := unsafe.Slice((*byte)(sliceData(pointer)), n)
+					if d.slice != nil {
+						_, err = d.Read(buffer)
+					} else {
+						_, err = io.ReadFull(d, buffer)
+					}
 					if err != nil {
 						return
 					}
