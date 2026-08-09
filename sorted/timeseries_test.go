@@ -4,6 +4,7 @@
 package sorted
 
 import (
+	stdbinary "encoding/binary"
 	"testing"
 
 	"github.com/kelindar/binary"
@@ -45,4 +46,21 @@ func makeTimeSeries(count int) *TimeSeries {
 		ts.Append(uint64(1500000000+i), float64(i))
 	}
 	return &ts
+}
+
+func TestSeriesDecode(t *testing.T) {
+	input := TimeSeries{Time: []uint64{1, 3}, Data: []float64{10, 20}}
+	encoded, err := binary.Marshal(input)
+	assert.NoError(t, err)
+	got := TimeSeries{Time: make([]uint64, 0, 4), Data: make([]float64, 0, 4)}
+	assert.NoError(t, binary.Unmarshal(encoded, &got))
+	assert.Equal(t, input, got)
+
+	for _, data := range [][]byte{
+		stdbinary.AppendUvarint(stdbinary.AppendUvarint(nil, 0), 1),
+		append(stdbinary.AppendUvarint(stdbinary.AppendUvarint(nil, 1), 2), 0x80, 0x80),
+	} {
+		var out TimeSeries
+		assert.Error(t, binary.Unmarshal(data, &out))
+	}
 }

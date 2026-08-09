@@ -5,7 +5,10 @@ package nocopy
 
 import (
 	"bytes"
+	stdbinary "encoding/binary"
 	"encoding/json"
+	"io"
+	"reflect"
 	"sort"
 	"strconv"
 	"testing"
@@ -220,6 +223,63 @@ func TestSort(t *testing.T) {
 			sort.Sort(tc.value)
 			assert.Equal(t, tc.want, tc.value)
 		})
+	}
+}
+
+func TestDecodeBranches(t *testing.T) {
+	huge := make([]byte, 8)
+	stdbinary.LittleEndian.PutUint64(huge, ^uint64(0))
+	assert.Equal(t, io.ErrUnexpectedEOF, binary.Unmarshal(huge, new(Uint16s)))
+	assert.Error(t, binary.Unmarshal(nil, new(Uint16s)))
+
+	misaligned := make([]byte, 8)
+	stdbinary.LittleEndian.PutUint64(misaligned, 1)
+	assert.Equal(t, io.ErrUnexpectedEOF, binary.Unmarshal(misaligned, new(Uint16s)))
+
+	integerBody := make([]byte, 8)
+	stdbinary.LittleEndian.PutUint64(integerBody, 2)
+	assert.Error(t, binary.Unmarshal(integerBody, new(Uint16s)))
+	assert.Error(t, binary.Unmarshal([]byte{1}, new(Bytes)))
+	assert.Error(t, binary.Unmarshal(nil, new(Bools)))
+	assert.NoError(t, binary.Unmarshal([]byte{0}, new(Bools)))
+	assert.Error(t, binary.Unmarshal(stdbinary.AppendUvarint(nil, ^uint64(0)), new(Bools)))
+
+	inputs := []any{
+		ByteMap{"empty": nil, "value": []byte("x")},
+		HashMap{1: nil, 2: []byte("x")},
+		Dictionary{"key": "value"},
+	}
+	for _, input := range inputs {
+		encoded, err := binary.Marshal(input)
+		assert.NoError(t, err)
+		out := reflect.New(reflect.TypeOf(input))
+		assert.NoError(t, binary.NewDecoder(bytes.NewReader(encoded)).Decode(out.Interface()))
+		assert.Equal(t, input, deref(out.Interface()))
+	}
+
+	var byteMap ByteMap
+	for _, data := range [][]byte{
+		{1, 0},
+		{1, 0, 1, 0},
+		{1, 0, 1, 'k'},
+		append([]byte{1, 0, 1, 'k'}, stdbinary.AppendUvarint(nil, ^uint64(0))...),
+		{1, 0, 1, 'k', 1},
+	} {
+		assert.Error(t, binary.Unmarshal(data, &byteMap))
+	}
+
+	var hashMap HashMap
+	for _, data := range [][]byte{
+		{1, 0, 0, 0},
+		append([]byte{1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0}, 1, 0, 0, 0),
+	} {
+		assert.Error(t, binary.Unmarshal(data, &hashMap))
+	}
+	assert.Error(t, binary.NewDecoder(bytes.NewReader([]byte{1, 0, 0, 0})).Decode(&hashMap))
+
+	var dictionary Dictionary
+	for _, data := range [][]byte{{1, 0}, {1, 0, 1, 0}, {1, 0, 1, 'k', 1}} {
+		assert.Error(t, binary.Unmarshal(data, &dictionary))
 	}
 }
 

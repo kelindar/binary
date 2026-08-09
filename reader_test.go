@@ -114,6 +114,27 @@ func TestStreamReader(t *testing.T) {
 	assert.NoError(t, dec.Decode(out))
 }
 
+func TestReaderBranches(t *testing.T) {
+	var nilBuffer *bytes.Buffer
+	if _, ok := newReader(nilBuffer).(*sliceReader); !ok {
+		t.Fatal("typed nil buffer did not use the slice reader")
+	}
+
+	d := NewDecoder(bytes.NewReader(nil))
+	assert.Equal(t, io.ErrUnexpectedEOF, func() error {
+		_, err := d.Slice(-1)
+		return err
+	}())
+
+	n := 64<<10 + 1
+	data, err := NewDecoder(bytes.NewReader(bytes.Repeat([]byte{'x'}, n))).Slice(n)
+	assert.NoError(t, err)
+	assert.Len(t, data, n)
+
+	_, err = NewDecoder(bytes.NewReader(bytes.Repeat([]byte{'x'}, n-1))).Slice(n)
+	assert.Equal(t, io.EOF, err)
+}
+
 // --------------------------------------- Big Structure (Every Field Type) ---------------------------------------
 
 // structure with every possible codec type

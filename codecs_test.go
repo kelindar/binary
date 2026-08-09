@@ -5,6 +5,7 @@ package binary
 
 import (
 	"bytes"
+	stdbinary "encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -37,6 +39,10 @@ type simpleStruct struct {
 type sliceStruct struct {
 	Payload []byte
 }
+
+type arenaMapKey string
+type arenaMapBytes []byte
+type emptyMapValue struct{}
 
 type s1 struct {
 	Name     string
@@ -82,6 +88,10 @@ func (*malformedBinary) UnmarshalBinary([]byte) error     { return nil }
 type malformedCodec struct{}
 
 func (*malformedCodec) GetBinaryCodec(int) Codec { return nil }
+
+type nilCodecType struct{}
+
+func (*nilCodecType) GetBinaryCodec() Codec { return nil }
 
 func (v customPointer) MarshalBinary() ([]byte, error) {
 	return []byte(v.value), nil
@@ -379,6 +389,289 @@ func TestNumericSlices(t *testing.T) {
 			assert.Equal(t, tc.value, got.Elem().Interface())
 		})
 	}
+}
+
+func TestStreamSlices(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		out   any
+	}{
+		{"bytes", []byte{1, 2, 3}, new([]byte)},
+		{"empty bytes", []byte{}, new([]byte)},
+		{"bools", []bool{true, false, true}, new([]bool)},
+		{"strings", []string{"one", "two"}, new([]string)},
+		{"structs", []simpleStruct{{Name: "one"}, {Name: "two"}}, new([]simpleStruct)},
+		{"pointers", []*simpleStruct{{Name: "one"}, nil}, new([]*simpleStruct)},
+		{"int8", []int8{-2, 0, 2}, new([]int8)},
+		{"int16", []int16{-2, 0, 2}, new([]int16)},
+		{"int32", []int32{-2, 0, 2}, new([]int32)},
+		{"int64", []int64{-2, 0, 2}, new([]int64)},
+		{"uint16", []uint16{0, 127, 128}, new([]uint16)},
+		{"uint32", []uint32{0, 127, 128}, new([]uint32)},
+		{"uint64", []uint64{0, 127, 128}, new([]uint64)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded, err := Marshal(tc.value)
+			assert.NoError(t, err)
+			assert.NoError(t, NewDecoder(bytes.NewReader(encoded)).Decode(tc.out))
+			if reflect.ValueOf(tc.out).Elem().Len() == 0 {
+				assert.Empty(t, reflect.ValueOf(tc.out).Elem().Interface())
+			} else {
+				assert.Equal(t, tc.value, reflect.ValueOf(tc.out).Elem().Interface())
+			}
+		})
+	}
+}
+
+func TestStreamErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		out  any
+	}{
+		{"bytes", new([]byte)},
+		{"bools", new([]bool)},
+		{"strings", new([]string)},
+		{"pointers", new([]*int)},
+		{"signed", new([]int16)},
+		{"unsigned", new([]uint16)},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Error(t, NewDecoder(bytes.NewReader([]byte{1})).Decode(tc.out))
+		})
+	}
+}
+
+func TestSliceResizeErrors(t *testing.T) {
+	var value []int
+	assert.Equal(t, io.ErrUnexpectedEOF, resizeSliceChecked(reflect.ValueOf(&value).Elem(), -1))
+	assert.Equal(t, io.ErrUnexpectedEOF, makeSliceChecked(reflect.ValueOf(&value).Elem(), -1))
+	assert.Equal(t, io.ErrUnexpectedEOF, makeSliceChecked(reflect.ValueOf(value), 1))
+
+	d := NewDecoder(bytes.NewReader([]byte{4, 't', 'e', 's', 't'}))
+	got, err := d.readString("test")
+	assert.NoError(t, err)
+	assert.Equal(t, "test", got)
+	assert.Equal(t, io.ErrUnexpectedEOF, validateSliceLength(reflect.TypeFor[[]byte](), -1))
+	assert.Equal(t, io.ErrUnexpectedEOF, validateSliceLength(reflect.TypeFor[[]byte](), int(^uint(0)>>1)))
+	assert.Equal(t, io.ErrUnexpectedEOF, d.ensureAvailable(-1))
+	assert.Equal(t, io.ErrUnexpectedEOF, d.ensureElements(-1, 1))
+	sliceDecoder := NewDecoder(bytes.NewBuffer(nil))
+	assert.Equal(t, io.EOF, sliceDecoder.ensureAvailable(5))
+	assert.Equal(t, io.EOF, sliceDecoder.ensureElements(5, 1))
+}
+
+func TestCodecMalformedLengths(t *testing.T) {
+	huge := stdbinary.AppendUvarint(nil, ^uint64(0))
+	for _, out := range []any{
+		new([]byte),
+		new([]bool),
+		new([]string),
+		new([]int),
+		new([]*int),
+		new([]simpleStruct),
+	} {
+		assert.Error(t, Unmarshal(huge, out))
+	}
+
+	var structs []simpleStruct
+	assert.Error(t, Unmarshal([]byte{2}, &structs))
+	var strings [2]string
+	assert.Error(t, Unmarshal(nil, &strings))
+
+	var zeroWire []struct{ _ int }
+	encoded, err := Marshal([]struct{ _ int }{{}, {}})
+	assert.NoError(t, err)
+	assert.NoError(t, Unmarshal(encoded, &zeroWire))
+	assert.Len(t, zeroWire, 2)
+}
+
+func TestVarintDecoderHelpers(t *testing.T) {
+	signed := []struct {
+		name string
+		size uintptr
+		out  any
+	}{
+		{"int8", 1, []int8{0}},
+		{"int16", 2, []int16{0}},
+		{"int32", 4, []int32{0}},
+		{"int64", 8, []int64{0}},
+	}
+	for _, tc := range signed {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDecoder(bytes.NewReader([]byte{1}))
+			value := reflect.ValueOf(tc.out)
+			assert.NoError(t, decodeVarints(d, unsafe.Pointer(value.Pointer()), 1, tc.size))
+		})
+	}
+
+	unsigned := []struct {
+		name string
+		size uintptr
+		out  any
+	}{
+		{"uint16", 2, []uint16{0}},
+		{"uint32", 4, []uint32{0}},
+		{"uint64", 8, []uint64{0}},
+	}
+	for _, tc := range unsigned {
+		t.Run(tc.name, func(t *testing.T) {
+			d := NewDecoder(bytes.NewReader([]byte{1}))
+			value := reflect.ValueOf(tc.out)
+			assert.NoError(t, decodeVaruints(d, unsafe.Pointer(value.Pointer()), 1, tc.size))
+		})
+	}
+
+	signedValue := []int16{0}
+	unsignedValue := []uint16{0}
+	assert.Error(t, decodeVarints(NewDecoder(bytes.NewReader(nil)), unsafe.Pointer(unsafe.SliceData(signedValue)), 1, 2))
+	assert.Error(t, decodeVaruints(NewDecoder(bytes.NewReader(nil)), unsafe.Pointer(unsafe.SliceData(unsignedValue)), 1, 2))
+}
+
+func TestGenericMapCodecs(t *testing.T) {
+	input := map[arenaMapKey]arenaMapBytes{
+		"a": []byte("x"),
+		"b": []byte("y"),
+	}
+	encoded, err := Marshal(input)
+	assert.NoError(t, err)
+	var got map[arenaMapKey]arenaMapBytes
+	assert.NoError(t, Unmarshal(encoded, &got))
+	assert.Equal(t, input, got)
+	sibling := got["b"]
+	_ = append(got["a"], 'z', 'q')
+	assert.Equal(t, arenaMapBytes("y"), sibling)
+
+	var streamed map[arenaMapKey]arenaMapBytes
+	assert.NoError(t, NewDecoder(bytes.NewReader(encoded)).Decode(&streamed))
+	assert.Equal(t, input, streamed)
+
+	zero := map[emptyMapValue]emptyMapValue{{}: {}}
+	zeroData, err := Marshal(zero)
+	assert.NoError(t, err)
+	var zeroGot map[emptyMapValue]emptyMapValue
+	assert.NoError(t, Unmarshal(zeroData, &zeroGot))
+	assert.Equal(t, zero, zeroGot)
+
+	withStructKey := map[emptyMapValue]string{{}: "value"}
+	withStructKeyData, err := Marshal(withStructKey)
+	assert.NoError(t, err)
+	var withStructKeyGot map[emptyMapValue]string
+	assert.NoError(t, Unmarshal(withStructKeyData, &withStructKeyGot))
+	assert.Equal(t, withStructKey, withStructKeyGot)
+
+	long := string(bytes.Repeat([]byte{'k'}, maxMapKeyLength+1))
+	_, err = Marshal(map[arenaMapKey]arenaMapBytes{arenaMapKey(long): {'x'}})
+	assert.True(t, errors.Is(err, errMapKeyTooLong))
+
+	for _, value := range []any{
+		map[string]string{"a": "b"},
+		map[string][]byte{"a": []byte("b")},
+		map[string]uint64{"a": 1},
+	} {
+		data, err := Marshal(value)
+		assert.NoError(t, err)
+		out := reflect.New(reflect.TypeOf(value))
+		assert.NoError(t, NewDecoder(bytes.NewReader(data)).Decode(out.Interface()))
+		assert.Equal(t, value, out.Elem().Interface())
+	}
+}
+
+func TestStringMapHelpers(t *testing.T) {
+	assert.Equal(t, 2, stringMapValueSize([]byte("x")))
+	assert.Equal(t, []byte{1, 'x'}, appendStringMapValue[[]byte](nil, []byte("x")))
+
+	value, err := readStringMapValue[string](NewDecoder(bytes.NewBuffer([]byte{1, 'x'})), nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "x", value)
+	empty, err := readStringMapValue[[]byte](NewDecoder(bytes.NewBuffer([]byte{0})), nil)
+	assert.NoError(t, err)
+	assert.Nil(t, empty)
+	_, err = readStringMapValue[string](NewDecoder(bytes.NewBuffer(nil)), nil)
+	assert.Error(t, err)
+
+	assert.Error(t, Unmarshal(stdbinary.AppendUvarint(nil, ^uint64(0)), new(map[string]string)))
+	assert.Error(t, Unmarshal([]byte{1, 2, 0, 'k'}, new(map[string]string)))
+
+	long := string(bytes.Repeat([]byte{'k'}, maxMapKeyLength+1))
+	large := make(map[string]string, 8)
+	large[long] = "value"
+	for i := 0; i < 7; i++ {
+		large[fmt.Sprintf("key-%d", i)] = "value"
+	}
+	_, err = Marshal(large)
+	assert.True(t, errors.Is(err, errMapKeyTooLong))
+}
+
+func TestScannerErrorPaths(t *testing.T) {
+	_, err := Marshal(make(chan int))
+	assert.Error(t, err)
+	_, err = scanType(reflect.TypeFor[nilCodecType]())
+	assert.Error(t, err)
+	assert.True(t, isNilInterface(nil))
+	var nilSlice []byte
+	assert.True(t, isNilInterface(nilSlice))
+}
+
+func TestCodecMetadata(t *testing.T) {
+	emptyStruct := &reflectStructCodec{}
+	assert.True(t, isZeroWireCodec(emptyStruct))
+	assert.Equal(t, 0, wireMinBytes(emptyStruct))
+
+	zeroCollection := &reflectCollectionCodec{elemCodec: emptyStruct, array: true}
+	assert.True(t, isZeroWireCodec(zeroCollection))
+	assert.Equal(t, 0, wireMinBytes(zeroCollection))
+	collection := &reflectCollectionCodec{elemCodec: &primitiveCodec{}, array: true, length: 2}
+	assert.False(t, isZeroWireCodec(collection))
+	assert.Equal(t, 2, wireMinBytes(collection))
+	assert.Equal(t, 1, wireMinBytes(&reflectCollectionCodec{elemCodec: &primitiveCodec{}}))
+
+	assert.True(t, isZeroWireCodec(&stringSliceCodec{array: true}))
+	assert.False(t, isZeroWireCodec(&stringSliceCodec{array: true, length: 1}))
+	assert.True(t, isZeroWireCodec(&fixedSliceCodec{array: true}))
+	assert.False(t, isZeroWireCodec(&fixedSliceCodec{array: true, length: 1}))
+	assert.Equal(t, 2, wireMinBytes(&stringSliceCodec{array: true, length: 2}))
+	assert.Equal(t, 1, wireMinBytes(&stringSliceCodec{}))
+	assert.Equal(t, 8, wireMinBytes(&fixedSliceCodec{array: true, length: 2, elemSize: 4}))
+	assert.Equal(t, 1, wireMinBytes(&fixedSliceCodec{elemSize: 4}))
+
+	assert.Equal(t, 2, wireMinBytes(&reflectUnionCodec{}))
+	assert.Equal(t, 1, wireMinBytes(stringMapCodec[string]{}))
+	assert.Equal(t, 1, wireMinBytes(&reflectSliceOfPtrCodec{}))
+	assert.Equal(t, 1, wireMinBytes(&primitiveCodec{}))
+	assert.Equal(t, 0, wireMinBytes(nil))
+	assert.Equal(t, 1, wireMinBytes(&reflectStructCodec{{Field: fieldIncluded, Codec: &primitiveCodec{}}}))
+}
+
+func TestCollectionErrors(t *testing.T) {
+	var values []s2
+	assert.Error(t, Unmarshal(nil, &values))
+	encoded, err := Marshal([]s2{{b: []byte{1}}})
+	assert.NoError(t, err)
+	assert.NoError(t, NewDecoder(bytes.NewReader(encoded)).Decode(&values))
+	assert.Error(t, NewDecoder(bytes.NewReader([]byte{1, 0})).Decode(&values))
+
+	var pointers []*int
+	assert.Error(t, Unmarshal([]byte{1}, &pointers))
+	var bytesValue []byte
+	assert.Error(t, Unmarshal([]byte{1}, &bytesValue))
+
+	array := [2]struct{}{}
+	zeroArray := &reflectCollectionCodec{elemCodec: &reflectStructCodec{}, array: true, length: 2}
+	assert.NoError(t, zeroArray.DecodeTo(NewDecoder(bytes.NewBuffer(nil)), reflect.ValueOf(&array).Elem()))
+
+	huge := stdbinary.AppendUvarint(nil, ^uint64(0))
+	var custom s2
+	assert.Error(t, Unmarshal(huge, &custom))
+	assert.Error(t, Unmarshal(stdbinary.AppendUvarint(nil, uint64(^uint(0)>>1)), &custom))
+	assert.Error(t, NewDecoder(bytes.NewReader([]byte{1})).Decode(&custom))
+
+	var numeric map[uint64]uint64
+	assert.Error(t, Unmarshal(huge, &numeric))
+	var generic map[int]string
+	assert.Error(t, Unmarshal(huge, &generic))
 }
 
 func TestFixedWidthSlices(t *testing.T) {
