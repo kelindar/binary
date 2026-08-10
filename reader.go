@@ -89,25 +89,22 @@ func (r *sliceReader) Slice(n int) ([]byte, error) {
 }
 
 func (r *sliceReader) ReadUvarint() (uint64, error) {
-	if r.offset >= len(r.buffer) {
-		return 0, io.EOF
-	}
-	value, n := binary.Uvarint(r.buffer[r.offset:])
-	switch {
-	case n > 0:
-		r.offset += n
-		return value, nil
-	case n < 0:
-		r.offset += binary.MaxVarintLen64
-		return value, overflow
-	default:
-		if len(r.buffer)-r.offset >= binary.MaxVarintLen64 {
-			r.offset += binary.MaxVarintLen64
-			return 0, overflow
+	var value uint64
+	for shift := uint(0); shift < 64; shift += 7 {
+		if r.offset >= len(r.buffer) {
+			return 0, io.EOF
 		}
-		r.offset = len(r.buffer)
-		return 0, io.EOF
+		b := r.buffer[r.offset]
+		r.offset++
+		if b < 0x80 {
+			if shift == 63 && b > 1 {
+				return value, overflow
+			}
+			return value | uint64(b)<<shift, nil
+		}
+		value |= uint64(b&0x7f) << shift
 	}
+	return value, overflow
 }
 
 type integer interface {

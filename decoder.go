@@ -62,23 +62,14 @@ func (d *Decoder) Decode(v any) (err error) {
 }
 
 func (d *Decoder) Read(b []byte) (int, error) {
-	if d.slice != nil {
-		return d.slice.Read(b)
-	}
 	return d.reader.Read(b)
 }
 
 func (d *Decoder) ReadUvarint() (uint64, error) {
-	if d.slice != nil {
-		return d.slice.ReadUvarint()
-	}
 	return d.reader.ReadUvarint()
 }
 
 func (d *Decoder) ReadVarint() (int64, error) {
-	if d.slice != nil {
-		return d.slice.ReadVarint()
-	}
 	return d.reader.ReadVarint()
 }
 
@@ -123,16 +114,16 @@ func (d *Decoder) ReadFloat64() (out float64, err error) {
 }
 
 func (d *Decoder) ReadBool() (bool, error) {
-	if d.slice != nil {
-		b, err := d.slice.ReadByte()
-		return b == 1, err
-	}
 	b, err := d.reader.ReadByte()
 	return b == 1, err
 }
 
 func (d *Decoder) ReadString() (out string, err error) {
-	return d.readString("")
+	var b []byte
+	if b, err = d.ReadSlice(); err == nil {
+		out = string(b)
+	}
+	return
 }
 
 func (d *Decoder) readString(old string) (string, error) {

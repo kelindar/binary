@@ -90,6 +90,16 @@ type malformedCodec struct{}
 
 func (*malformedCodec) GetBinaryCodec(int) Codec { return nil }
 
+type zeroCodec struct{}
+
+func (zeroCodec) EncodeTo(*Encoder, reflect.Value) error { return nil }
+func (zeroCodec) DecodeTo(*Decoder, reflect.Value) error { return nil }
+
+type errorCodec struct{}
+
+func (errorCodec) EncodeTo(*Encoder, reflect.Value) error { return nil }
+func (errorCodec) DecodeTo(*Decoder, reflect.Value) error { return errors.New("decode failed") }
+
 type nilCodecType struct{}
 
 func (*nilCodecType) GetBinaryCodec() Codec { return nil }
@@ -673,6 +683,39 @@ func TestCollectionErrors(t *testing.T) {
 	assert.Error(t, Unmarshal(huge, &numeric))
 	var generic map[int]string
 	assert.Error(t, Unmarshal(huge, &generic))
+}
+
+func TestCodecPaths(t *testing.T) {
+	got := []int{9}
+	codec := &reflectCollectionCodec{elemCodec: zeroCodec{}}
+	err := codec.DecodeTo(NewDecoder(bytes.NewBuffer([]byte{2})), reflect.ValueOf(&got).Elem())
+	assert.NoError(t, err)
+	assert.Equal(t, []int{0, 0}, got)
+
+	type item struct{ Value int }
+	var items []item
+	codec = &reflectCollectionCodec{elemCodec: &reflectStructCodec{{Field: fieldIncluded, Codec: zeroCodec{}}}}
+	err = codec.DecodeTo(NewDecoder(bytes.NewBuffer([]byte{2})), reflect.ValueOf(&items).Elem())
+	assert.NoError(t, err)
+	assert.Equal(t, []item{{}, {}}, items)
+
+	data := stdbinary.AppendUvarint(nil, uint64(^uint(0)>>1))
+	var streamed []int
+	codec = &reflectCollectionCodec{elemCodec: &primitiveCodec{}}
+	err = codec.DecodeTo(NewDecoder(bytes.NewReader(data)), reflect.ValueOf(&streamed).Elem())
+	assert.Equal(t, io.ErrUnexpectedEOF, err)
+
+	var unaddressable []int
+	err = codec.DecodeTo(NewDecoder(bytes.NewBuffer([]byte{1, 0})), reflect.ValueOf(unaddressable))
+	assert.Equal(t, io.ErrUnexpectedEOF, err)
+
+	codec = &reflectCollectionCodec{elemCodec: errorCodec{}}
+	assert.Error(t, codec.DecodeTo(NewDecoder(bytes.NewBuffer([]byte{1})), reflect.ValueOf(&got).Elem()))
+
+	var pointers []*int
+	ptrCodec := &reflectSliceOfPtrCodec{elemCodec: &primitiveCodec{}, elemType: reflect.TypeFor[int]()}
+	err = ptrCodec.DecodeTo(NewDecoder(bytes.NewBuffer([]byte{1, 0})), reflect.ValueOf(pointers))
+	assert.Equal(t, io.ErrUnexpectedEOF, err)
 }
 
 func TestFixedWidthSlices(t *testing.T) {

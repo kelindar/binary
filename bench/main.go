@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/kelindar/bench"
@@ -55,6 +56,94 @@ func runBinary(b *bench.B) {
 	runBinaryReuse(b)
 	runBinaryTrace(b)
 	runBinaryUnion(b)
+	runBinaryPaths(b)
+}
+
+type binaryPathCase struct {
+	name      string
+	value     any
+	newOutput func() any
+}
+
+func binaryPathCases() []binaryPathCase {
+	items := make([]benchmarkItem, 32)
+	for i := range items {
+		items[i] = benchmarkItem{ID: int64(i), Name: "item"}
+	}
+	pointers := make([]*benchmarkItem, 16)
+	for i := range pointers {
+		if i%4 != 0 {
+			pointers[i] = &items[i]
+		}
+	}
+	strings := make([]string, 16)
+	for i := range strings {
+		strings[i] = "value"
+	}
+	signed := make([]int64, 32)
+	unsigned := make([]uint64, 32)
+	for i := range signed {
+		signed[i] = int64(i) - 16
+		unsigned[i] = uint64(i)
+	}
+	return []binaryPathCase{
+		{"flat", benchmarkFlat{ID: -42, Count: 99, Name: "flat"}, func() any { return new(benchmarkFlat) }},
+		{"typ", items, func() any { return new([]benchmarkItem) }},
+		{"str", strings, func() any { return new([]string) }},
+		{"i64", signed, func() any { return new([]int64) }},
+		{"u64", unsigned, func() any { return new([]uint64) }},
+		{"ptr", pointers, func() any { return new([]*benchmarkItem) }},
+	}
+}
+
+type benchmarkItem struct {
+	ID   int64
+	Name string
+}
+
+type benchmarkFlat struct {
+	ID    int64
+	Count uint64
+	Name  string
+}
+
+type benchmarkStreamWriter struct{ bytes.Buffer }
+
+func runBinaryPaths(b *bench.B) {
+	for _, tc := range binaryPathCases() {
+		data, err := binary.Marshal(tc.value)
+		if err != nil {
+			panic(err)
+		}
+
+		var writer benchmarkStreamWriter
+		encoder := binary.NewEncoder(&writer)
+		if err := encoder.Encode(tc.value); err != nil {
+			panic(err)
+		}
+
+		b.Run("path/"+tc.name+"-enc", func(int) {
+			out, _ := binary.Marshal(tc.value)
+			runtime.KeepAlive(out)
+			runtime.KeepAlive(tc.value)
+		})
+		b.Run("path/"+tc.name+"-enc-to", func(int) {
+			writer.Reset()
+			encoder.Reset(&writer)
+			_ = encoder.Encode(tc.value)
+			runtime.KeepAlive(tc.value)
+		})
+		b.Run("path/"+tc.name+"-dec", func(int) {
+			out := tc.newOutput()
+			_ = binary.Unmarshal(data, out)
+			runtime.KeepAlive(out)
+		})
+		b.Run("path/"+tc.name+"-stream-dec", func(int) {
+			out := tc.newOutput()
+			_ = binary.NewDecoder(bytes.NewReader(data)).Decode(out)
+			runtime.KeepAlive(out)
+		})
+	}
 }
 
 func runBinaryMsg(b *bench.B) {
