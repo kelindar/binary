@@ -88,11 +88,11 @@ func binaryPathCases() []binaryPathCase {
 	}
 	return []binaryPathCase{
 		{"flat", benchmarkFlat{ID: -42, Count: 99, Name: "flat"}, func() any { return new(benchmarkFlat) }},
-		{"struct-slice", items, func() any { return new([]benchmarkItem) }},
-		{"string-slice", strings, func() any { return new([]string) }},
-		{"signed-slice", signed, func() any { return new([]int64) }},
-		{"unsigned-slice", unsigned, func() any { return new([]uint64) }},
-		{"pointer-slice", pointers, func() any { return new([]*benchmarkItem) }},
+		{"typ", items, func() any { return new([]benchmarkItem) }},
+		{"str", strings, func() any { return new([]string) }},
+		{"i64", signed, func() any { return new([]int64) }},
+		{"u64", unsigned, func() any { return new([]uint64) }},
+		{"ptr", pointers, func() any { return new([]*benchmarkItem) }},
 	}
 }
 
@@ -122,23 +122,23 @@ func runBinaryPaths(b *bench.B) {
 			panic(err)
 		}
 
-		b.Run("binary/paths/bytes-enc/"+tc.name, func(int) {
+		b.Run("path/"+tc.name+"-enc", func(int) {
 			out, _ := binary.Marshal(tc.value)
 			runtime.KeepAlive(out)
 			runtime.KeepAlive(tc.value)
 		})
-		b.Run("binary/paths/stream-enc/"+tc.name, func(int) {
+		b.Run("path/"+tc.name+"-enc-to", func(int) {
 			writer.Reset()
 			encoder.Reset(&writer)
 			_ = encoder.Encode(tc.value)
 			runtime.KeepAlive(tc.value)
 		})
-		b.Run("binary/paths/bytes-dec/"+tc.name, func(int) {
+		b.Run("path/"+tc.name+"-dec", func(int) {
 			out := tc.newOutput()
 			_ = binary.Unmarshal(data, out)
 			runtime.KeepAlive(out)
 		})
-		b.Run("binary/paths/stream-dec/"+tc.name, func(int) {
+		b.Run("path/"+tc.name+"-stream-dec", func(int) {
 			out := tc.newOutput()
 			_ = binary.NewDecoder(bytes.NewReader(data)).Decode(out)
 			runtime.KeepAlive(out)
