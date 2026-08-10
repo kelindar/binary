@@ -1144,10 +1144,10 @@ func (c *customCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 func (c *customCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 	if rv.Kind() == reflect.Ptr {
 		isNil, err := d.ReadBool()
-		if err != nil {
+		switch {
+		case err != nil:
 			return err
-		}
-		if isNil {
+		case isNil:
 			rv.SetZero()
 			return nil
 		}
