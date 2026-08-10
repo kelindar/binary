@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"sync"
+	"unsafe"
 )
 
 var decoders = &sync.Pool{New: func() any {
@@ -121,9 +122,19 @@ func (d *Decoder) ReadBool() (bool, error) {
 func (d *Decoder) ReadString() (out string, err error) {
 	var b []byte
 	if b, err = d.ReadSlice(); err == nil {
-		out = string(b)
+		out = d.stringFromBytes(b)
 	}
 	return
+}
+
+func (d *Decoder) stringFromBytes(b []byte) string {
+	if d.slice == nil {
+		if _, ok := d.reader.(*streamReader); ok {
+			// streamReader allocates and owns this buffer, so it cannot be mutated after return.
+			return unsafe.String(unsafe.SliceData(b), len(b))
+		}
+	}
+	return string(b)
 }
 
 func (d *Decoder) readString(old string) (string, error) {
@@ -134,7 +145,7 @@ func (d *Decoder) readString(old string) (string, error) {
 	if len(old) == len(b) && bytes.Equal(ToBytes(old), b) {
 		return old, nil
 	}
-	return string(b), nil
+	return d.stringFromBytes(b), nil
 }
 
 func (d *Decoder) readComplex64() (out complex64, err error) {
