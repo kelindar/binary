@@ -105,30 +105,36 @@ func (c *reflectCollectionCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 		if n, err = decodeLength(l); err != nil {
 			return
 		}
-		minBytes := wireMinBytes(c.elemCodec)
 		if wireless {
 			return resizeSliceChecked(rv, n)
 		}
-		if d.Available() < 0 || minBytes == 0 {
-			rv.SetLen(0)
-			for i := 0; i < n; i++ {
-				appendSliceElement(rv)
-				if isStruct {
-					err = codec.DecodeTo(d, rv.Index(i))
-				} else {
-					err = c.elemCodec.DecodeTo(d, rv.Index(i))
-				}
-				if err != nil {
-					return
-				}
+		if d.Available() < 0 {
+			if err = resizeSliceChecked(rv, n); err != nil {
+				return
 			}
-			return nil
-		}
-		if err = d.ensureElements(n, minBytes); err != nil {
-			return
-		}
-		if err = resizeSliceChecked(rv, n); err != nil {
-			return
+		} else {
+			minBytes := wireMinBytes(c.elemCodec)
+			if minBytes == 0 {
+				rv.SetLen(0)
+				for i := 0; i < n; i++ {
+					appendSliceElement(rv)
+					if isStruct {
+						err = codec.DecodeTo(d, rv.Index(i))
+					} else {
+						err = c.elemCodec.DecodeTo(d, rv.Index(i))
+					}
+					if err != nil {
+						return
+					}
+				}
+				return nil
+			}
+			if err = d.ensureElements(n, minBytes); err != nil {
+				return
+			}
+			if err = resizeSliceChecked(rv, n); err != nil {
+				return
+			}
 		}
 	}
 	if isStruct {
@@ -183,21 +189,13 @@ func (c *reflectSliceOfPtrCodec) DecodeTo(d *Decoder, rv reflect.Value) (err err
 	if err != nil {
 		return err
 	}
-	stream := d.Available() < 0
-	if stream {
-		rv.SetLen(0)
-	} else {
-		if err = d.ensureAvailable(n); err != nil {
-			return err
-		}
-		if err = resizeSliceChecked(rv, n); err != nil {
-			return err
-		}
+	if err = d.ensureAvailable(n); err != nil {
+		return err
+	}
+	if err = resizeSliceChecked(rv, n); err != nil {
+		return err
 	}
 	for i := 0; i < n; i++ {
-		if stream {
-			appendSliceElement(rv)
-		}
 		ptr := rv.Index(i)
 		isNil, err = d.ReadBool()
 		switch {
@@ -319,24 +317,22 @@ func (c *stringSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		if n, err = decodeLength(l); err != nil {
 			return
 		}
-		if d.Available() < 0 {
-			rv.SetLen(0)
-			for i := 0; i < n; i++ {
-				appendSliceElement(rv)
-				value, readErr := d.readString("")
-				if readErr != nil {
-					return readErr
-				}
-				rv.Index(i).SetString(value)
-			}
-			return nil
-		}
 		if err = d.ensureAvailable(n); err != nil {
 			return
 		}
 		if err = resizeSliceChecked(rv, n); err != nil {
 			return
 		}
+	}
+	if d.Available() < 0 {
+		for i := 0; i < n; i++ {
+			var value string
+			if value, err = d.ReadString(); err != nil {
+				return
+			}
+			rv.Index(i).SetString(value)
+		}
+		return nil
 	}
 	if c.array {
 		if err = d.ensureAvailable(n); err != nil {
@@ -625,27 +621,6 @@ func (c *varSliceCodec) DecodeTo(d *Decoder, rv reflect.Value) (err error) {
 		if n, err = decodeLength(l); err != nil {
 			return
 		}
-		if d.Available() < 0 {
-			rv.SetLen(0)
-			for i := 0; i < n; i++ {
-				appendSliceElement(rv)
-				if c.signed {
-					var value int64
-					if value, err = d.ReadVarint(); err == nil {
-						rv.Index(i).SetInt(value)
-					}
-				} else {
-					var value uint64
-					if value, err = d.ReadUvarint(); err == nil {
-						rv.Index(i).SetUint(value)
-					}
-				}
-				if err != nil {
-					return
-				}
-			}
-			return nil
-		}
 		if err = d.ensureAvailable(n); err != nil {
 			return
 		}
@@ -908,10 +883,26 @@ func (c reflectStructCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 				e.WriteString(*(*string)(pointer))
 			case reflect.Bool:
 				e.writeBool(*(*bool)(pointer))
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				e.WriteVarint(rv.Field(i).Int())
-			case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				e.WriteUvarint(rv.Field(i).Uint())
+			case reflect.Int:
+				e.WriteVarint(int64(*(*int)(pointer)))
+			case reflect.Int8:
+				e.WriteVarint(int64(*(*int8)(pointer)))
+			case reflect.Int16:
+				e.WriteVarint(int64(*(*int16)(pointer)))
+			case reflect.Int32:
+				e.WriteVarint(int64(*(*int32)(pointer)))
+			case reflect.Int64:
+				e.WriteVarint(*(*int64)(pointer))
+			case reflect.Uint:
+				e.WriteUvarint(uint64(*(*uint)(pointer)))
+			case reflect.Uint8:
+				e.WriteUvarint(uint64(*(*uint8)(pointer)))
+			case reflect.Uint16:
+				e.WriteUvarint(uint64(*(*uint16)(pointer)))
+			case reflect.Uint32:
+				e.WriteUvarint(uint64(*(*uint32)(pointer)))
+			case reflect.Uint64:
+				e.WriteUvarint(*(*uint64)(pointer))
 			case reflect.Complex64:
 				e.writeComplex64(*(*complex64)(pointer))
 			case reflect.Complex128:
