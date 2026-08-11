@@ -4,6 +4,7 @@
 package binary
 
 import (
+	"bytes"
 	"io"
 	"testing"
 
@@ -56,4 +57,18 @@ func TestDecodeFromReader(t *testing.T) {
 	str, err := decoder.ReadString()
 	assert.NoError(t, err)
 	assert.Equal(t, data, str)
+}
+
+func TestStreamStringLifetime(t *testing.T) {
+	first, err := Marshal("first")
+	assert.NoError(t, err)
+	second, err := Marshal("second")
+	assert.NoError(t, err)
+
+	decoder := NewDecoder(bytes.NewReader(append(first, second...)))
+	var gotFirst, gotSecond string
+	assert.NoError(t, decoder.Decode(&gotFirst))
+	assert.NoError(t, decoder.Decode(&gotSecond))
+	assert.Equal(t, "first", gotFirst)
+	assert.Equal(t, "second", gotSecond)
 }

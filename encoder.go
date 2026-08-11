@@ -24,6 +24,12 @@ type marshalState struct {
 	encoder Encoder
 }
 
+type bufferWriter interface {
+	io.Writer
+	Grow(int)
+	AvailableBuffer() []byte
+}
+
 var marshalBuffers = &sync.Pool{New: func() any {
 	return new(marshalState)
 }}
@@ -118,7 +124,7 @@ func (e *Encoder) Encode(v any) (err error) {
 		e.last = t
 		e.codec = c
 	}
-	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil && (rv.Kind() == reflect.Array || rv.Kind() == reflect.Slice) {
+	if out, ok := e.out.(bufferWriter); ok && e.err == nil && (rv.Kind() == reflect.Array || rv.Kind() == reflect.Slice) {
 		out.Grow(marshalCapacity(rv))
 	}
 	if err = c.EncodeTo(e, rv); err == nil {

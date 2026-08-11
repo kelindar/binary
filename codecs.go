@@ -4,7 +4,6 @@
 package binary
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -267,7 +266,7 @@ type stringSliceCodec struct {
 func (c *stringSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	if l >= 8 {
-		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+		if out, ok := e.out.(bufferWriter); ok && e.err == nil {
 			size := 0
 			if !c.array {
 				size = uvarintSize(uint64(l))
@@ -404,7 +403,7 @@ type fixedSliceCodec struct {
 func (c *fixedSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	l := rv.Len()
 	if l >= 8 {
-		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil && (!c.array || rv.CanAddr()) {
+		if out, ok := e.out.(bufferWriter); ok && e.err == nil && (!c.array || rv.CanAddr()) {
 			size := l * int(c.elemSize)
 			if !c.array {
 				size += uvarintSize(uint64(l))
@@ -570,7 +569,7 @@ func (c *varSliceCodec) EncodeTo(e *Encoder, rv reflect.Value) error {
 }
 func encodeVarints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) {
 	e.WriteUvarint(uint64(l))
-	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+	if out, ok := e.out.(bufferWriter); ok && e.err == nil {
 		out.Grow(2 * l)
 		buffer := out.AvailableBuffer()
 		switch elemSize {
@@ -679,7 +678,7 @@ func readSigned[T integer](d *Decoder, values []T) error {
 }
 func encodeVaruints(e *Encoder, base unsafe.Pointer, l int, elemSize uintptr) {
 	e.WriteUvarint(uint64(l))
-	if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+	if out, ok := e.out.(bufferWriter); ok && e.err == nil {
 		out.Grow(2 * l)
 		buffer := out.AvailableBuffer()
 		switch elemSize {
@@ -1312,7 +1311,7 @@ func readStringMapValue[V stringMapValue](d *Decoder, arena *[]byte) (V, error) 
 func (stringMapCodec[V]) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	m := rv.Interface().(map[string]V)
 	if len(m) >= 8 {
-		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+		if out, ok := e.out.(bufferWriter); ok && e.err == nil {
 			size := uvarintSize(uint64(len(m)))
 			for key, value := range m {
 				if err = checkMapKey(key); err != nil {
@@ -1404,7 +1403,7 @@ type uint64MapCodec struct{}
 func (uint64MapCodec) EncodeTo(e *Encoder, rv reflect.Value) (err error) {
 	m := rv.Interface().(map[uint64]uint64)
 	if len(m) >= 8 {
-		if out, ok := e.out.(*bytes.Buffer); ok && e.err == nil {
+		if out, ok := e.out.(bufferWriter); ok && e.err == nil {
 			size := uvarintSize(uint64(len(m)))
 			for key, value := range m {
 				size += 8 + uvarintSize(key) + uvarintSize(value)
